@@ -1,0 +1,285 @@
+// Copyright DataStax, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package astradb
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/datastax/astra-db-go/cursor"
+	"github.com/datastax/astra-db-go/filter"
+	"github.com/datastax/astra-db-go/options"
+	"github.com/datastax/astra-db-go/results"
+)
+
+// Collection represents a collection in an Astra DB database.
+//
+// Options set on the collection are inherited by all commands
+// executed on it, unless overridden at the command level.
+type Collection struct {
+	db      *Db
+	name    string
+	options *options.APIOptions
+}
+
+// Name returns the collection name.
+func (c *Collection) Name() string {
+	return c.name
+}
+
+// Options returns the collection's options (or empty options if nil).
+func (c *Collection) Options() *options.APIOptions {
+	if c.options == nil {
+		return &options.APIOptions{}
+	}
+	return c.options
+}
+
+// Database returns the parent database.
+func (c *Collection) Database() *Db {
+	return c.db
+}
+
+func (c *Collection) newCmd(name string, payload any, opts ...options.APIOption) command {
+	return newCmdWithOptions(c.db, c.name, name, payload, c.options, opts...)
+}
+
+// insertManyPayload is the payload for insertMany commands.
+type insertManyPayload struct {
+	Documents any `json:"documents"`
+}
+
+// insertOnePayload is the payload for insertOne commands.
+type insertOnePayload struct {
+	Document any `json:"document"`
+}
+
+// documentsInsertResponse is the response from insert operations.
+type documentsInsertResponse struct {
+	Status status `json:"status"`
+}
+
+type status struct {
+	InsertedIds []any `json:"insertedIds"`
+}
+
+// InsertOne inserts a single document into the collection.
+//
+// Options passed here override those set on the collection.
+func (c *Collection) InsertOne(ctx context.Context, payload any, opts ...options.APIOption) (documentsInsertResponse, error) {
+	var resp documentsInsertResponse
+	cmd := c.newCmd("insertOne", insertOnePayload{
+		Document: payload,
+	}, opts...)
+	b, err := cmd.Execute(ctx)
+	if err != nil {
+		return resp, err
+	}
+	err = json.Unmarshal(b, &resp)
+	return resp, err
+}
+
+// InsertMany inserts documents into the collection. Param documents must be a non-empty slice.
+//
+// Options passed here override those set on the collection.
+func (c *Collection) InsertMany(ctx context.Context, documents any, opts ...options.APIOption) (documentsInsertResponse, error) {
+	var resp documentsInsertResponse
+
+	// Ensure we have a slice with documents
+	err := ensureNonEmptySlice(documents)
+	if err != nil {
+		return resp, fmt.Errorf("documents: %w", err)
+	}
+	cmd := c.newCmd("insertMany", insertManyPayload{
+		Documents: documents,
+	}, opts...)
+	b, err := cmd.Execute(ctx)
+	if err != nil {
+		return resp, err
+	}
+	err = json.Unmarshal(b, &resp)
+	return resp, err
+}
+
+// FindOne finds a single document matching the filter.
+//
+// Options passed here override those set on the collection.
+func (c *Collection) FindOne(ctx context.Context, f any, opts ...options.APIOption) *results.SingleResult {
+	switch f.(type) {
+	case filter.F, filter.Filter:
+		// Allowed
+	default:
+		return results.NewSingleResult(nil, fmt.Errorf("invalid filter type: %T", f))
+	}
+	cmd := c.newCmd("findOne", filterWrapper{Filters: f}, opts...)
+	b, err := cmd.Execute(ctx)
+	return results.NewSingleResult(b, err)
+}
+
+// collectionFindPayload is the payload for the find command on collections
+type collectionFindPayload struct {
+	Filter     any                    `json:"filter,omitempty"`
+	Sort       map[string]any         `json:"sort,omitempty"`
+	Projection map[string]any         `json:"projection,omitempty"`
+	Options    *collectionFindOptions `json:"options,omitempty"`
+}
+
+// collectionFindOptions contains options for collection find operations
+type collectionFindOptions struct {
+	Limit             *int    `json:"limit,omitempty"`
+	Skip              *int    `json:"skip,omitempty"`
+	IncludeSimilarity *bool   `json:"includeSimilarity,omitempty"`
+	IncludeSortVector *bool   `json:"includeSortVector,omitempty"`
+	PageState         *string `json:"pageState,omitempty"`
+}
+
+// collectionFindResponse is the response from the find command
+type collectionFindResponse struct {
+	Data struct {
+		Documents     []json.RawMessage `json:"documents"`
+		NextPageState *string           `json:"nextPageState"`
+	} `json:"data"`
+}
+
+// Find returns a cursor for iterating over documents matching the filter.
+//
+// The cursor automatically handles pagination, fetching new pages as needed.
+//
+// Example using Next/Decode pattern:
+//
+//	cursor := coll.Find(ctx, filter.F{"active": true})
+//	defer cursor.Close(ctx)
+//
+//	for cursor.Next(ctx) {
+//	    var doc MyDocument
+//	    if err := cursor.Decode(&doc); err != nil {
+//	        return err
+//	    }
+//	    // Process doc
+//	}
+//	if err := cursor.Err(); err != nil {
+//	    return err
+//	}
+//
+// Example getting all results at once:
+//
+//	cursor := coll.Find(ctx, filter.F{})
+//	var docs []MyDocument
+//	if err := cursor.All(ctx, &docs); err != nil {
+//	    return err
+//	}
+//
+// Example with sort and limit:
+//
+//	cursor := coll.Find(ctx, filter.F{"status": "active"},
+//	    options.WithCollectionSort(map[string]any{"created": -1}),
+//	    options.WithCollectionLimit(10),
+//	)
+//
+// Example with vector search:
+//
+//	cursor := coll.Find(ctx, filter.F{},
+//	    options.WithCollectionSort(map[string]any{"$vector": []float32{0.1, 0.2, 0.3}}),
+//	    options.WithCollectionIncludeSimilarity(true),
+//	)
+func (c *Collection) Find(ctx context.Context, f any, opts ...options.CollectionFindOption) *cursor.Cursor {
+	// Validate filter type
+	switch f.(type) {
+	case filter.F, filter.Filter:
+		// Allowed
+	default:
+		return cursor.NewWithError(fmt.Errorf("invalid filter type: %T", f))
+	}
+
+	// Build the find options once (they don't change between pages)
+	findOpts := options.NewCollectionFindOptions(opts...)
+
+	// Create a page fetcher that captures the collection, filter, and options
+	fetcher := func(fetchCtx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
+		payload := collectionFindPayload{
+			Filter:     f,
+			Sort:       findOpts.Sort,
+			Projection: findOpts.Projection,
+		}
+
+		// Build options - use provided pageState for pagination
+		payloadOpts := &collectionFindOptions{}
+		hasOpts := false
+
+		if findOpts.Limit != nil {
+			payloadOpts.Limit = findOpts.Limit
+			hasOpts = true
+		}
+		if findOpts.Skip != nil {
+			payloadOpts.Skip = findOpts.Skip
+			hasOpts = true
+		}
+		if findOpts.IncludeSimilarity != nil {
+			payloadOpts.IncludeSimilarity = findOpts.IncludeSimilarity
+			hasOpts = true
+		}
+		if findOpts.IncludeSortVector != nil {
+			payloadOpts.IncludeSortVector = findOpts.IncludeSortVector
+			hasOpts = true
+		}
+		if pageState != nil {
+			payloadOpts.PageState = pageState
+			hasOpts = true
+		} else if findOpts.InitialPageState != nil {
+			// Only use InitialPageState for the first request
+			payloadOpts.PageState = findOpts.InitialPageState
+			hasOpts = true
+		}
+
+		if hasOpts {
+			payload.Options = payloadOpts
+		}
+
+		cmd := c.newCmd("find", payload)
+		b, err := cmd.Execute(fetchCtx)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		var resp collectionFindResponse
+		if err := json.Unmarshal(b, &resp); err != nil {
+			return nil, nil, err
+		}
+
+		return resp.Data.Documents, resp.Data.NextPageState, nil
+	}
+
+	return cursor.New(fetcher)
+}
+
+func newCmdPayload(filter any) cmdPayload {
+	if filter != nil {
+		return cmdPayload{"filter": filter}
+	}
+	return cmdPayload{}
+}
+
+type cmdPayload map[string]any
+
+// CountDocuments counts documents after applying filter f. Count operations are
+// expensive: for this reason, the best practice is to provide a reasonable upperBound.
+// Use "0" for "all" (not recommended unless you have appropriate filters).
+//
+// Options passed here override those set on the collection.
+func (c *Collection) CountDocuments(ctx context.Context, f any, upperBound int, opts ...options.APIOption) (int, error) {
+	cmd := c.newCmd("countDocuments", filterWrapper{Filters: f}, opts...)
+	return results.NewCountResult(cmd.Execute(ctx)).Count(upperBound)
+}
