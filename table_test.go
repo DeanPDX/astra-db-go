@@ -1,0 +1,701 @@
+// Copyright DataStax, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package astradb
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/datastax/astra-db-go/filter"
+	"github.com/datastax/astra-db-go/options"
+	"github.com/datastax/astra-db-go/table"
+)
+
+func TestCreateTablePayloadMarshal(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  createTablePayload
+		expected string
+	}{
+		{
+			name: "single column primary key",
+			payload: createTablePayload{
+				Name: "test_table",
+				Definition: table.Definition{
+					Columns: map[string]table.Column{
+						"title": table.Text(),
+					},
+					PrimaryKey: table.PrimaryKey{
+						PartitionBy: []string{"title"},
+					},
+				},
+			},
+			expected: `{"name":"test_table","definition":{"columns":{"title":{"type":"text"}},"primaryKey":"title"}}`,
+		},
+		{
+			name: "composite primary key",
+			payload: createTablePayload{
+				Name: "test_table",
+				Definition: table.Definition{
+					Columns: map[string]table.Column{
+						"title":  table.Text(),
+						"rating": table.Float(),
+					},
+					PrimaryKey: table.PrimaryKey{
+						PartitionBy: []string{"title", "rating"},
+					},
+				},
+			},
+			expected: `{"name":"test_table","definition":{"columns":{"rating":{"type":"float"},"title":{"type":"text"}},"primaryKey":{"partitionBy":["title","rating"]}}}`,
+		},
+		{
+			name: "compound primary key with clustering",
+			payload: createTablePayload{
+				Name: "test_table",
+				Definition: table.Definition{
+					Columns: map[string]table.Column{
+						"title":           table.Text(),
+						"rating":          table.Float(),
+						"number_of_pages": table.Int(),
+					},
+					PrimaryKey: table.PrimaryKey{
+						PartitionBy:   []string{"title"},
+						PartitionSort: map[string]int{"rating": table.SortAscending, "number_of_pages": table.SortDescending},
+					},
+				},
+			},
+		},
+		{
+			name: "with ifNotExists",
+			payload: createTablePayload{
+				Name: "test_table",
+				Definition: table.Definition{
+					Columns: map[string]table.Column{
+						"id": table.UUID(),
+					},
+					PrimaryKey: table.PrimaryKey{
+						PartitionBy: []string{"id"},
+					},
+				},
+				Options: &createTableOpts{IfNotExists: true},
+			},
+			expected: `{"name":"test_table","definition":{"columns":{"id":{"type":"uuid"}},"primaryKey":"id"},"options":{"ifNotExists":true}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := json.Marshal(tt.payload)
+			if err != nil {
+				t.Fatalf("failed to marshal: %v", err)
+			}
+			if tt.expected != "" && string(b) != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, string(b))
+			}
+			// Verify it can be unmarshaled back
+			var result createTablePayload
+			if err := json.Unmarshal(b, &result); err != nil {
+				t.Fatalf("failed to unmarshal: %v", err)
+			}
+		})
+	}
+}
+
+func TestColumnDefinitions(t *testing.T) {
+	tests := []struct {
+		name   string
+		column table.Column
+		check  func(t *testing.T, col table.Column)
+	}{
+		{
+			name:   "text column",
+			column: table.Text(),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "text" {
+					t.Errorf("expected type text, got %s", col.Type)
+				}
+			},
+		},
+		{
+			name:   "int column",
+			column: table.Int(),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "int" {
+					t.Errorf("expected type int, got %s", col.Type)
+				}
+			},
+		},
+		{
+			name:   "float column",
+			column: table.Float(),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "float" {
+					t.Errorf("expected type float, got %s", col.Type)
+				}
+			},
+		},
+		{
+			name:   "boolean column",
+			column: table.Boolean(),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "boolean" {
+					t.Errorf("expected type boolean, got %s", col.Type)
+				}
+			},
+		},
+		{
+			name:   "uuid column",
+			column: table.UUID(),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "uuid" {
+					t.Errorf("expected type uuid, got %s", col.Type)
+				}
+			},
+		},
+		{
+			name:   "date column",
+			column: table.Date(),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "date" {
+					t.Errorf("expected type date, got %s", col.Type)
+				}
+			},
+		},
+		{
+			name:   "vector column",
+			column: table.Vector(1024),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "vector" {
+					t.Errorf("expected type vector, got %s", col.Type)
+				}
+				if col.Dimension == nil || *col.Dimension != 1024 {
+					t.Errorf("expected dimension 1024")
+				}
+			},
+		},
+		{
+			name:   "set of text",
+			column: table.Set(table.Text()),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "set" {
+					t.Errorf("expected type set, got %s", col.Type)
+				}
+				if col.ValueType == nil || col.ValueType.Type != "text" {
+					t.Errorf("expected valueType text")
+				}
+			},
+		},
+		{
+			name:   "list of int",
+			column: table.List(table.Int()),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "list" {
+					t.Errorf("expected type list, got %s", col.Type)
+				}
+				if col.ValueType == nil || col.ValueType.Type != "int" {
+					t.Errorf("expected valueType int")
+				}
+			},
+		},
+		{
+			name:   "map of text to text",
+			column: table.Map("text", table.Text()),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "map" {
+					t.Errorf("expected type map, got %s", col.Type)
+				}
+				if col.KeyType == nil || *col.KeyType != "text" {
+					t.Errorf("expected keyType text")
+				}
+				if col.ValueType == nil || col.ValueType.Type != "text" {
+					t.Errorf("expected valueType text")
+				}
+			},
+		},
+		{
+			name:   "user defined type",
+			column: table.UDT("person"),
+			check: func(t *testing.T, col table.Column) {
+				if col.Type != "userDefined" {
+					t.Errorf("expected type userDefined, got %s", col.Type)
+				}
+				if col.UDTName == nil || *col.UDTName != "person" {
+					t.Errorf("expected udtName person")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Verify it can be marshaled
+			b, err := json.Marshal(tt.column)
+			if err != nil {
+				t.Fatalf("failed to marshal: %v", err)
+			}
+
+			// Verify it can be unmarshaled back
+			var result table.Column
+			if err := json.Unmarshal(b, &result); err != nil {
+				t.Fatalf("failed to unmarshal: %v", err)
+			}
+
+			// Run type-specific checks
+			tt.check(t, result)
+		})
+	}
+}
+
+func TestVectorColumnWithService(t *testing.T) {
+	service := &table.VectorService{
+		Provider:  "openai",
+		ModelName: "text-embedding-3-small",
+		Authentication: map[string]string{
+			"providerKey": "my-api-key",
+		},
+	}
+	col := table.VectorWithService(1536, service)
+
+	b, err := json.Marshal(col)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	expected := `{"type":"vector","dimension":1536,"service":{"provider":"openai","modelName":"text-embedding-3-small","authentication":{"providerKey":"my-api-key"}}}`
+	if string(b) != expected {
+		t.Errorf("expected %s, got %s", expected, string(b))
+	}
+}
+
+func TestPrimaryKeyUnmarshal(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected table.PrimaryKey
+	}{
+		{
+			name:  "single column as string",
+			input: `"title"`,
+			expected: table.PrimaryKey{
+				PartitionBy: []string{"title"},
+			},
+		},
+		{
+			name:  "composite key as object",
+			input: `{"partitionBy":["title","rating"]}`,
+			expected: table.PrimaryKey{
+				PartitionBy: []string{"title", "rating"},
+			},
+		},
+		{
+			name:  "compound key with clustering",
+			input: `{"partitionBy":["title"],"partitionSort":{"rating":1}}`,
+			expected: table.PrimaryKey{
+				PartitionBy:   []string{"title"},
+				PartitionSort: map[string]int{"rating": 1},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var pk table.PrimaryKey
+			if err := json.Unmarshal([]byte(tt.input), &pk); err != nil {
+				t.Fatalf("failed to unmarshal: %v", err)
+			}
+			if len(pk.PartitionBy) != len(tt.expected.PartitionBy) {
+				t.Errorf("PartitionBy length mismatch: expected %d, got %d", len(tt.expected.PartitionBy), len(pk.PartitionBy))
+			}
+			for i, col := range tt.expected.PartitionBy {
+				if pk.PartitionBy[i] != col {
+					t.Errorf("PartitionBy[%d] mismatch: expected %s, got %s", i, col, pk.PartitionBy[i])
+				}
+			}
+		})
+	}
+}
+
+func TestTableFindPayloadMarshal(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload tableFindPayload
+		check   func(t *testing.T, result map[string]any)
+	}{
+		{
+			name: "empty filter",
+			payload: tableFindPayload{
+				Filter: filter.F{},
+			},
+			check: func(t *testing.T, result map[string]any) {
+				if result["filter"] == nil {
+					t.Error("expected filter to be present")
+				}
+			},
+		},
+		{
+			name: "with filter",
+			payload: tableFindPayload{
+				Filter: filter.F{"is_checked_out": false},
+			},
+			check: func(t *testing.T, result map[string]any) {
+				f, ok := result["filter"].(map[string]any)
+				if !ok {
+					t.Fatal("expected filter to be a map")
+				}
+				if f["is_checked_out"] != false {
+					t.Error("expected is_checked_out to be false")
+				}
+			},
+		},
+		{
+			name: "with sort ascending",
+			payload: tableFindPayload{
+				Filter: filter.F{},
+				Sort:   map[string]any{"rating": options.SortAscending},
+			},
+			check: func(t *testing.T, result map[string]any) {
+				sort, ok := result["sort"].(map[string]any)
+				if !ok {
+					t.Fatal("expected sort to be a map")
+				}
+				// JSON numbers unmarshal as float64
+				if sort["rating"] != float64(1) {
+					t.Errorf("expected rating sort to be 1, got %v", sort["rating"])
+				}
+			},
+		},
+		{
+			name: "with sort descending",
+			payload: tableFindPayload{
+				Filter: filter.F{},
+				Sort:   map[string]any{"title": options.SortDescending},
+			},
+			check: func(t *testing.T, result map[string]any) {
+				sort, ok := result["sort"].(map[string]any)
+				if !ok {
+					t.Fatal("expected sort to be a map")
+				}
+				if sort["title"] != float64(-1) {
+					t.Errorf("expected title sort to be -1, got %v", sort["title"])
+				}
+			},
+		},
+		{
+			name: "with vector search",
+			payload: tableFindPayload{
+				Filter: filter.F{},
+				Sort:   map[string]any{"vector_col": []float32{0.1, 0.2, 0.3}},
+			},
+			check: func(t *testing.T, result map[string]any) {
+				sort, ok := result["sort"].(map[string]any)
+				if !ok {
+					t.Fatal("expected sort to be a map")
+				}
+				vec, ok := sort["vector_col"].([]any)
+				if !ok {
+					t.Fatal("expected vector_col to be a slice")
+				}
+				if len(vec) != 3 {
+					t.Errorf("expected vector length 3, got %d", len(vec))
+				}
+			},
+		},
+		{
+			name: "with projection include",
+			payload: tableFindPayload{
+				Filter:     filter.F{},
+				Projection: map[string]bool{"title": true, "rating": true},
+			},
+			check: func(t *testing.T, result map[string]any) {
+				proj, ok := result["projection"].(map[string]any)
+				if !ok {
+					t.Fatal("expected projection to be a map")
+				}
+				if proj["title"] != true {
+					t.Error("expected title to be included")
+				}
+				if proj["rating"] != true {
+					t.Error("expected rating to be included")
+				}
+			},
+		},
+		{
+			name: "with limit and skip",
+			payload: tableFindPayload{
+				Filter: filter.F{},
+				Options: &tableFindOpts{
+					Limit: intPtr(10),
+					Skip:  intPtr(5),
+				},
+			},
+			check: func(t *testing.T, result map[string]any) {
+				opts, ok := result["options"].(map[string]any)
+				if !ok {
+					t.Fatal("expected options to be a map")
+				}
+				if opts["limit"] != float64(10) {
+					t.Errorf("expected limit 10, got %v", opts["limit"])
+				}
+				if opts["skip"] != float64(5) {
+					t.Errorf("expected skip 5, got %v", opts["skip"])
+				}
+			},
+		},
+		{
+			name: "with includeSimilarity",
+			payload: tableFindPayload{
+				Filter: filter.F{},
+				Sort:   map[string]any{"vector_col": []float32{0.1, 0.2}},
+				Options: &tableFindOpts{
+					IncludeSimilarity: boolPtr(true),
+				},
+			},
+			check: func(t *testing.T, result map[string]any) {
+				opts, ok := result["options"].(map[string]any)
+				if !ok {
+					t.Fatal("expected options to be a map")
+				}
+				if opts["includeSimilarity"] != true {
+					t.Error("expected includeSimilarity to be true")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := json.Marshal(tt.payload)
+			if err != nil {
+				t.Fatalf("failed to marshal: %v", err)
+			}
+
+			var result map[string]any
+			if err := json.Unmarshal(b, &result); err != nil {
+				t.Fatalf("failed to unmarshal: %v", err)
+			}
+
+			tt.check(t, result)
+		})
+	}
+}
+
+func TestTableFindOptions(t *testing.T) {
+	t.Run("with all options", func(t *testing.T) {
+		opts := options.NewTableFindOptions(
+			options.WithSort(map[string]any{"rating": options.SortAscending}),
+			options.WithProjection(map[string]bool{"title": true}),
+			options.WithLimit(10),
+			options.WithSkip(5),
+			options.WithIncludeSimilarity(true),
+			options.WithInitialPageState("some-page-state"),
+		)
+
+		if opts.Sort == nil {
+			t.Error("expected sort to be set")
+		}
+		if opts.Projection == nil {
+			t.Error("expected projection to be set")
+		}
+		if opts.Limit == nil || *opts.Limit != 10 {
+			t.Error("expected limit to be 10")
+		}
+		if opts.Skip == nil || *opts.Skip != 5 {
+			t.Error("expected skip to be 5")
+		}
+		if opts.IncludeSimilarity == nil || !*opts.IncludeSimilarity {
+			t.Error("expected includeSimilarity to be true")
+		}
+		if opts.InitialPageState == nil || *opts.InitialPageState != "some-page-state" {
+			t.Error("expected initialPageState to be set")
+		}
+	})
+}
+
+func TestFilterWithStructuredFilters(t *testing.T) {
+	// Test using the structured filter types
+	f := filter.And(
+		filter.Eq("is_checked_out", false),
+		filter.Lt("number_of_pages", 300),
+	)
+
+	b, err := json.Marshal(f)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	// Should produce something like:
+	// {"$and":[{"is_checked_out":false},{"number_of_pages":{"$lt":300}}]}
+	var result map[string]any
+	if err := json.Unmarshal(b, &result); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	andFilters, ok := result["$and"].([]any)
+	if !ok {
+		t.Fatal("expected $and to be an array")
+	}
+	if len(andFilters) != 2 {
+		t.Errorf("expected 2 filters in $and, got %d", len(andFilters))
+	}
+}
+
+func TestTableInsertOnePayloadMarshal(t *testing.T) {
+	type TestRow struct {
+		Title  string  `json:"title"`
+		Author string  `json:"author"`
+		Rating float32 `json:"rating"`
+	}
+
+	payload := tableInsertOnePayload{
+		Document: TestRow{
+			Title:  "The Great Gatsby",
+			Author: "F. Scott Fitzgerald",
+			Rating: 4.5,
+		},
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(b, &result); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	doc, ok := result["document"].(map[string]any)
+	if !ok {
+		t.Fatal("expected document to be a map")
+	}
+
+	if doc["title"] != "The Great Gatsby" {
+		t.Errorf("expected title 'The Great Gatsby', got %v", doc["title"])
+	}
+	if doc["author"] != "F. Scott Fitzgerald" {
+		t.Errorf("expected author 'F. Scott Fitzgerald', got %v", doc["author"])
+	}
+}
+
+func TestTableInsertManyPayloadMarshal(t *testing.T) {
+	type TestRow struct {
+		Title  string  `json:"title"`
+		Rating float32 `json:"rating"`
+	}
+
+	rows := []TestRow{
+		{Title: "Book 1", Rating: 4.0},
+		{Title: "Book 2", Rating: 4.5},
+		{Title: "Book 3", Rating: 5.0},
+	}
+
+	payload := tableInsertManyPayload{
+		Documents: rows,
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(b, &result); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	docs, ok := result["documents"].([]any)
+	if !ok {
+		t.Fatal("expected documents to be a slice")
+	}
+
+	if len(docs) != 3 {
+		t.Errorf("expected 3 documents, got %d", len(docs))
+	}
+}
+
+func TestTableInsertResponseUnmarshal(t *testing.T) {
+	// Test single-column primary key response
+	// The API returns insertedIds as an array of arrays: [["value1"], ["value2"]]
+	t.Run("single column primary key", func(t *testing.T) {
+		jsonResp := `{"status":{"insertedIds":[["The Great Gatsby"]],"primaryKeySchema":{"title":{"type":"text"}}}}`
+		var resp TableInsertResponse
+		if err := json.Unmarshal([]byte(jsonResp), &resp); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if len(resp.Status.InsertedIds) != 1 {
+			t.Errorf("expected 1 inserted ID, got %d", len(resp.Status.InsertedIds))
+		}
+
+		// Each inserted ID is an array of primary key values
+		pkValues, ok := resp.Status.InsertedIds[0].([]any)
+		if !ok {
+			t.Fatalf("expected inserted ID to be []any, got %T", resp.Status.InsertedIds[0])
+		}
+		if len(pkValues) != 1 {
+			t.Errorf("expected 1 pk value, got %d", len(pkValues))
+		}
+		if pkValues[0] != "The Great Gatsby" {
+			t.Errorf("expected 'The Great Gatsby', got %v", pkValues[0])
+		}
+	})
+
+	// Test composite primary key response
+	t.Run("composite primary key", func(t *testing.T) {
+		// For composite keys, each inserted ID is still an array with multiple values
+		jsonResp := `{"status":{"insertedIds":[["Book 1","Author 1"]],"primaryKeySchema":{"title":{"type":"text"},"author":{"type":"text"}}}}`
+		var resp TableInsertResponse
+		if err := json.Unmarshal([]byte(jsonResp), &resp); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if len(resp.Status.InsertedIds) != 1 {
+			t.Errorf("expected 1 inserted ID, got %d", len(resp.Status.InsertedIds))
+		}
+
+		pkValues, ok := resp.Status.InsertedIds[0].([]any)
+		if !ok {
+			t.Fatalf("expected inserted ID to be []any, got %T", resp.Status.InsertedIds[0])
+		}
+		if len(pkValues) != 2 {
+			t.Errorf("expected 2 pk values, got %d", len(pkValues))
+		}
+		if pkValues[0] != "Book 1" {
+			t.Errorf("expected 'Book 1', got %v", pkValues[0])
+		}
+	})
+
+	// Test multiple inserts
+	t.Run("multiple inserts", func(t *testing.T) {
+		jsonResp := `{"status":{"insertedIds":[["Book 1"],["Book 2"],["Book 3"]]}}`
+		var resp TableInsertResponse
+		if err := json.Unmarshal([]byte(jsonResp), &resp); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if len(resp.Status.InsertedIds) != 3 {
+			t.Errorf("expected 3 inserted IDs, got %d", len(resp.Status.InsertedIds))
+		}
+	})
+}
+
+// Helper functions for creating pointers
+func intPtr(i int) *int {
+	return &i
+}
+
+func boolPtr(b bool) *bool {
+	return &b
+}
