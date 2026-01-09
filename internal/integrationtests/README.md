@@ -21,4 +21,4 @@ To run the tests:
 go run github.com/datastax/astra-db-go/internal/integrationtests
 ```
 
-Note that the files in [./tests][./tests] end with `_tests.go`, not `_test.go` because they aren't actually unit tests and we don't want them excluded from the `integrationtests` executable.
+Note that the files in [./tests](./tests) end with `_tests.go`, not `_test.go` because they aren't actually unit tests and we don't want them excluded from the `integrationtests` executable.
