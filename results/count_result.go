@@ -20,15 +20,24 @@ import (
 
 // CountResult represents documents returned from an operation.
 type CountResult struct {
-	err     error
-	rawResp []byte
+	err      error
+	rawResp  []byte
+	warnings Warnings
 }
 
-func NewCountResult(rawResp []byte, err error) *CountResult {
+// NewCountResult creates a new CountResult with the given response, warnings, and error.
+func NewCountResult(rawResp []byte, warnings Warnings, err error) *CountResult {
 	return &CountResult{
-		rawResp: rawResp,
-		err:     err,
+		rawResp:  rawResp,
+		warnings: warnings,
+		err:      err,
 	}
+}
+
+// Warnings returns any warnings from the API response.
+// Returns nil if there were no warnings.
+func (cr *CountResult) Warnings() Warnings {
+	return cr.warnings
 }
 
 // JSON returned from the astra API is in a format like this:

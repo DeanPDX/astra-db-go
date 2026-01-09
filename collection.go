@@ -79,12 +79,13 @@ type status struct {
 // InsertOne inserts a single document into the collection.
 //
 // Options passed here override those set on the collection.
+// Note: Warnings are accessible via the WarningHandler option callback only.
 func (c *Collection) InsertOne(ctx context.Context, payload any, opts ...options.APIOption) (documentsInsertResponse, error) {
 	var resp documentsInsertResponse
 	cmd := c.newCmd("insertOne", insertOnePayload{
 		Document: payload,
 	}, opts...)
-	b, err := cmd.Execute(ctx)
+	b, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return resp, err
 	}
@@ -95,6 +96,7 @@ func (c *Collection) InsertOne(ctx context.Context, payload any, opts ...options
 // InsertMany inserts documents into the collection. Param documents must be a non-empty slice.
 //
 // Options passed here override those set on the collection.
+// Note: Warnings are accessible via the WarningHandler option callback only.
 func (c *Collection) InsertMany(ctx context.Context, documents any, opts ...options.APIOption) (documentsInsertResponse, error) {
 	var resp documentsInsertResponse
 
@@ -106,7 +108,7 @@ func (c *Collection) InsertMany(ctx context.Context, documents any, opts ...opti
 	cmd := c.newCmd("insertMany", insertManyPayload{
 		Documents: documents,
 	}, opts...)
-	b, err := cmd.Execute(ctx)
+	b, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return resp, err
 	}
@@ -122,11 +124,11 @@ func (c *Collection) FindOne(ctx context.Context, f any, opts ...options.APIOpti
 	case filter.F, filter.Filter:
 		// Allowed
 	default:
-		return results.NewSingleResult(nil, fmt.Errorf("invalid filter type: %T", f))
+		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %T", f))
 	}
 	cmd := c.newCmd("findOne", filterWrapper{Filters: f}, opts...)
-	b, err := cmd.Execute(ctx)
-	return results.NewSingleResult(b, err)
+	b, warnings, err := cmd.Execute(ctx)
+	return results.NewSingleResult(b, warnings, err)
 }
 
 // collectionFindPayload is the payload for the find command on collections
@@ -208,7 +210,7 @@ func (c *Collection) Find(ctx context.Context, f any, opts ...options.Collection
 	findOpts := options.NewCollectionFindOptions(opts...)
 
 	// Create a page fetcher that captures the collection, filter, and options
-	fetcher := func(fetchCtx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
+	fetcher := func(fetchCtx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
 		payload := collectionFindPayload{
 			Filter:     f,
 			Sort:       findOpts.Sort,
@@ -249,17 +251,17 @@ func (c *Collection) Find(ctx context.Context, f any, opts ...options.Collection
 		}
 
 		cmd := c.newCmd("find", payload)
-		b, err := cmd.Execute(fetchCtx)
+		b, warnings, err := cmd.Execute(fetchCtx)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, warnings, err
 		}
 
 		var resp collectionFindResponse
 		if err := json.Unmarshal(b, &resp); err != nil {
-			return nil, nil, err
+			return nil, nil, warnings, err
 		}
 
-		return resp.Data.Documents, resp.Data.NextPageState, nil
+		return resp.Data.Documents, resp.Data.NextPageState, warnings, nil
 	}
 
 	return cursor.New(fetcher)
@@ -281,5 +283,6 @@ type cmdPayload map[string]any
 // Options passed here override those set on the collection.
 func (c *Collection) CountDocuments(ctx context.Context, f any, upperBound int, opts ...options.APIOption) (int, error) {
 	cmd := c.newCmd("countDocuments", filterWrapper{Filters: f}, opts...)
-	return results.NewCountResult(cmd.Execute(ctx)).Count(upperBound)
+	b, warnings, err := cmd.Execute(ctx)
+	return results.NewCountResult(b, warnings, err).Count(upperBound)
 }

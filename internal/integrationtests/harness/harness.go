@@ -8,6 +8,7 @@ import (
 	"github.com/DeanPDX/dotconfig"
 	astradb "github.com/datastax/astra-db-go"
 	"github.com/datastax/astra-db-go/options"
+	"github.com/datastax/astra-db-go/results"
 )
 
 // TestEnv represents our test environment.
@@ -30,8 +31,17 @@ func Environment() TestEnv {
 func (e *TestEnv) DefaultDb() *astradb.Db {
 	client := astradb.NewClient(
 		options.WithToken(e.ApplicationToken),
+		options.WithWarningHandler(func(w results.Warning) {
+			// Add client handler just to make sure it is properly superseded by
+			// DB level handler.
+			slog.Error("Client handler called and should have been superseded by DB handler")
+		}),
 	)
-	return client.Database(e.APIEndpoint)
+	return client.Database(e.APIEndpoint, options.WithWarningHandler(func(w results.Warning) {
+		// Warn and let logs know this came from DB handler. In our tests we will
+		// make sure that collection/table/command level handlers supersede this.
+		slog.Warn("API warning from DB handler", "code", w.ErrorCode, "message", w.Message)
+	}))
 }
 
 // An integration test

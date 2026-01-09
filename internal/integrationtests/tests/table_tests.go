@@ -215,6 +215,13 @@ func TableFind(e *harness.TestEnv) error {
 		}
 	}
 
+	// We should have a MISSING_INDEX warning because we filtered by a non-indexed column.
+	// TODO: We could be more specific and check for the exact warning code/message. For now,
+	// just ensure we got some warnings. It's unclear if the code might change in the future.
+	if len(cursor.Warnings()) == 0 {
+		return errors.New("expected warnings for filtering on non-indexed column but got none")
+	}
+
 	return nil
 }
 
