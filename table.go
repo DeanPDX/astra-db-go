@@ -171,6 +171,29 @@ func (d *Db) DropTable(ctx context.Context, name string) error {
 	return err
 }
 
+// dropIndexPayload is the payload for the dropIndex command
+type dropIndexPayload struct {
+	Name string `json:"name"`
+}
+
+// DropTableIndex drops (deletes) an index from the database.
+//
+// Example usage:
+//
+//	err := db.DropTableIndex(ctx, "rating_idx")
+//
+// Note: Warnings are accessible via the WarningHandler option callback only.
+func (d *Db) DropTableIndex(ctx context.Context, name string) error {
+	cmd := dropTableIndexCommand(d, name)
+	_, _, err := cmd.Execute(ctx)
+	return err
+}
+
+// dropTableIndexCommand builds the dropIndex command for the database
+func dropTableIndexCommand(d *Db, name string) command {
+	return d.newCmd("dropIndex", dropIndexPayload{Name: name})
+}
+
 // tableFindPayload is the payload for the find command on tables
 type tableFindPayload struct {
 	Filter     any             `json:"filter,omitempty"`

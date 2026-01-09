@@ -887,6 +887,53 @@ func TestCreateVectorIndexIfNotExistsCommandMarshal(t *testing.T) {
 	}
 }
 
+// getTestDb acts as a test fixture to provide a *Db.
+func getTestDb(t *testing.T) *Db {
+	t.Helper()
+	client := NewClient(options.WithToken("TEST_TOKEN"))
+	if client.Options().Token == nil {
+		t.Fatal("expected token to be set")
+	}
+	return client.Database("https://API_ENDPOINT", options.WithKeyspace("some_keyspace"))
+}
+
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/drop-index.html#drop-an-index
+const exampleDropIndexPayloadJSON = `{
+  "dropIndex": {
+    "name": "rating"
+  }
+}`
+
+// TestDropTableIndexCommandMarshal verifies that the resulting command from dropTableIndexCommand
+// matches the payload in the docs.
+func TestDropTableIndexCommandMarshal(t *testing.T) {
+	cmd := dropTableIndexCommand(getTestDb(t), "rating")
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleDropIndexPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleDropIndexPayloadJSON, string(cmdBytes))
+	}
+}
+
+// TestDropTableIndexCommandURL verifies that the dropTableIndexCommand URL
+// matches the URL in the docs.
+func TestDropTableIndexCommandURL(t *testing.T) {
+	cmd := dropTableIndexCommand(getTestDb(t), "rating")
+	postURL, err := cmd.url()
+	if err != nil {
+		t.Fatalf("cmd.url: %v", err)
+	}
+	// Verify the URL matches what example CURL command is expecting
+	expectedURL := "https://API_ENDPOINT/api/json/v1/some_keyspace"
+	if postURL != expectedURL {
+		t.Errorf("expected URL %s, got %s", expectedURL, postURL)
+	}
+}
+
 // Helper functions for creating pointers
 func intPtr(i int) *int {
 	return &i

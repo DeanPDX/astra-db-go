@@ -248,6 +248,16 @@ func TableFind(e *harness.TestEnv) error {
 		return fmt.Errorf("expected no warnings after index creation. Got: %v", idxCursor.Warnings())
 	}
 
+	// Let's double-create that index and make sure it doesn't error out
+	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out", options.WithIndexIfNotExists(true)); err != nil {
+		return err
+	}
+
+	// Finally - drop index
+	if err := db.DropTableIndex(ctx, "is_checked_out_idx"); err != nil {
+		return err
+	}
+
 	return nil
 }
 
