@@ -163,6 +163,7 @@ type dropTablePayload struct {
 // Example usage:
 //
 //	err := db.DropTable(ctx, "my_table")
+//
 // Note: Warnings are accessible via the WarningHandler option callback only.
 func (d *Db) DropTable(ctx context.Context, name string) error {
 	cmd := d.newCmd("dropTable", dropTablePayload{Name: name})
@@ -441,4 +442,170 @@ func (t *Table) InsertMany(ctx context.Context, rows any, opts ...options.APIOpt
 	}
 	err = json.Unmarshal(b, &resp)
 	return resp, err
+}
+
+// createIndexPayload is the payload for the createIndex command
+type createIndexPayload struct {
+	Name       string                `json:"name"`
+	Definition createIndexDefinition `json:"definition"`
+	Options    *createIndexOpts      `json:"options,omitempty"`
+}
+
+// createIndexDefinition defines which column to index and any index options
+type createIndexDefinition struct {
+	Column  any           `json:"column"` // string or map[string]string for $keys/$values
+	Options *indexDefOpts `json:"options,omitempty"`
+}
+
+// indexDefOpts contains options for text index behavior
+type indexDefOpts struct {
+	Ascii         *bool `json:"ascii,omitempty"`
+	Normalize     *bool `json:"normalize,omitempty"`
+	CaseSensitive *bool `json:"caseSensitive,omitempty"`
+}
+
+// createIndexOpts contains command-level options for index creation
+type createIndexOpts struct {
+	IfNotExists bool `json:"ifNotExists,omitempty"`
+}
+
+// createVectorIndexPayload is the payload for the createVectorIndex command
+type createVectorIndexPayload struct {
+	Name       string                      `json:"name"`
+	Definition createVectorIndexDefinition `json:"definition"`
+	Options    *createIndexOpts            `json:"options,omitempty"`
+}
+
+// createVectorIndexDefinition defines which column to index and vector options
+type createVectorIndexDefinition struct {
+	Column  string              `json:"column"`
+	Options *vectorIndexDefOpts `json:"options,omitempty"`
+}
+
+// vectorIndexDefOpts contains options for vector index behavior
+type vectorIndexDefOpts struct {
+	Metric      string `json:"metric,omitempty"`
+	SourceModel string `json:"sourceModel,omitempty"`
+}
+
+// CreateIndex creates an index on a column in the table.
+//
+// The column parameter can be:
+//   - A string for regular column indexes: "column_name"
+//   - A map for indexing map column keys or values: map[string]string{"map_col": "$keys"}
+//
+// For text columns, you can configure index behavior using options like
+// WithAscii, WithNormalize, and WithCaseSensitive.
+//
+// Example - basic column index:
+//
+//	err := tbl.CreateIndex(ctx, "rating_idx", "rating")
+//
+// Example - text column with case-insensitive matching:
+//
+//	err := tbl.CreateIndex(ctx, "title_idx", "title",
+//	    options.WithCaseSensitive(false),
+//	)
+//
+// Example - map column keys index:
+//
+//	err := tbl.CreateIndex(ctx, "tags_idx", map[string]string{"tags": "$keys"})
+//
+// Example - with ifNotExists:
+//
+//	err := tbl.CreateIndex(ctx, "rating_idx", "rating",
+//	    options.WithIndexIfNotExists(true),
+//	)
+func (t *Table) CreateIndex(ctx context.Context, name string, column any, opts ...options.IndexOption) error {
+	cmd := createIndexCommand(t, name, column, opts...)
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	_, _, err := cmd.Execute(ctx)
+	return err
+}
+
+// createIndexCommand builds the createIndex command for the table
+func createIndexCommand(t *Table, name string, column any, opts ...options.IndexOption) command {
+	indexOpts := options.NewCreateIndexOptions(opts...)
+	payload := createIndexPayload{
+		Name: name,
+		Definition: createIndexDefinition{
+			Column: column,
+		},
+	}
+
+	// Add definition options if any text index options are set
+	if indexOpts.Ascii != nil || indexOpts.Normalize != nil || indexOpts.CaseSensitive != nil {
+		payload.Definition.Options = &indexDefOpts{
+			Ascii:         indexOpts.Ascii,
+			Normalize:     indexOpts.Normalize,
+			CaseSensitive: indexOpts.CaseSensitive,
+		}
+	}
+
+	// Add command options if ifNotExists is set
+	if indexOpts.IfNotExists {
+		payload.Options = &createIndexOpts{
+			IfNotExists: indexOpts.IfNotExists,
+		}
+	}
+
+	cmd := t.newCmd("createIndex", payload)
+	return cmd
+}
+
+// CreateVectorIndex creates a vector index on a vector column in the table.
+//
+// Vector indexes enable efficient similarity search on vector columns.
+// You can configure the similarity metric and source model for optimization.
+//
+// Example - basic vector index:
+//
+//	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding")
+//
+// Example - with metric and source model:
+//
+//	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding",
+//	    options.WithMetric(options.MetricDotProduct),
+//	    options.WithSourceModel("ada002"),
+//	)
+//
+// Example - with ifNotExists:
+//
+//	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding",
+//	    options.WithVectorIndexIfNotExists(true),
+//	)
+func (t *Table) CreateVectorIndex(ctx context.Context, name string, column string, opts ...options.VectorIndexOption) error {
+	cmd := createVectorIndexCommand(t, name, column, opts...)
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	_, _, err := cmd.Execute(ctx)
+	return err
+}
+
+// createVectorIndexCommand builds the createVectorIndex command for the table
+func createVectorIndexCommand(t *Table, name string, column string, opts ...options.VectorIndexOption) command {
+	indexOpts := options.NewCreateVectorIndexOptions(opts...)
+
+	payload := createVectorIndexPayload{
+		Name: name,
+		Definition: createVectorIndexDefinition{
+			Column: column,
+		},
+	}
+
+	// Add definition options if metric or sourceModel are set
+	if indexOpts.Metric != "" || indexOpts.SourceModel != "" {
+		payload.Definition.Options = &vectorIndexDefOpts{
+			Metric:      indexOpts.Metric,
+			SourceModel: indexOpts.SourceModel,
+		}
+	}
+
+	// Add command options if ifNotExists is set
+	if indexOpts.IfNotExists {
+		payload.Options = &createIndexOpts{
+			IfNotExists: indexOpts.IfNotExists,
+		}
+	}
+
+	return t.newCmd("createVectorIndex", payload)
 }

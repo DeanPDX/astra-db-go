@@ -691,6 +691,202 @@ func TestTableInsertResponseUnmarshal(t *testing.T) {
 	})
 }
 
+// getTestTable acts as a test fixture to provide a *Table.
+func getTestTable(t *testing.T) *Table {
+	// See: https://pkg.go.dev/testing#T.Helper
+	t.Helper()
+
+	client := NewClient(options.WithToken("TEST_TOKEN"))
+	db := client.Database("https://API_ENDPOINT", options.WithKeyspace("some_keyspace"))
+	return db.Table("example_table")
+}
+
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/create-index.html#example-exists
+//
+// The endpoint should look like:
+// "API_ENDPOINT/api/json/v1/KEYSPACE_NAME/TABLE_NAME"
+const exampleIndexPayloadJSON = `{
+  "createIndex": {
+    "name": "example_index_name",
+    "definition": {
+      "column": "example_column"
+    },
+    "options": {
+      "ifNotExists": true
+    }
+  }
+}`
+
+// TestCreateIndexCommandMarshal verifies that the resulting command from createIndexCommand matches
+// the payload in the docs.
+func TestCreateIndexCommandMarshal(t *testing.T) {
+	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.WithIndexIfNotExists(true))
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleIndexPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleIndexPayloadJSON, string(cmdBytes))
+	}
+}
+
+func TestCreateIndexCommandURL(t *testing.T) {
+	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.WithIndexIfNotExists(true))
+	postURL, err := cmd.url()
+	if err != nil {
+		t.Fatalf("cmd.url: %v", err)
+	}
+	// Verify the URL matches what example CURL command is expecting
+	expectedURL := "https://API_ENDPOINT/api/json/v1/some_keyspace/example_table"
+	if postURL != expectedURL {
+		t.Errorf("expected URL %s, got %s", expectedURL, postURL)
+	}
+}
+
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/create-index.html#example-ascii
+const exampleIndexASCIIPayloadJSON = `{
+  "createIndex": {
+    "name": "example_index_name",
+    "definition": {
+      "column": "example_column",
+      "options": {
+        "ascii": true
+      }
+    }
+  }
+}`
+
+// TestCreateIndexASCIICommandMarshal verifies that the resulting command from createIndexCommand
+// with the ascii option matches the payload in the docs.
+func TestCreateIndexASCIICommandMarshal(t *testing.T) {
+	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.WithAscii(true))
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleIndexASCIIPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleIndexASCIIPayloadJSON, string(cmdBytes))
+	}
+}
+
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/create-index.html#example-index-map
+const exampleIndexMapKeysPayloadJSON = `{
+  "createIndex": {
+    "name": "example_index_name",
+    "definition": {
+      "column": {
+        "example_map_column": "$keys"
+      }
+    }
+  }
+}`
+
+// TestCreateIndexMapKeysCommandMarshal verifies that the resulting command from createIndexCommand
+// with a map column keys index matches the payload in the docs.
+func TestCreateIndexMapKeysCommandMarshal(t *testing.T) {
+	cmd := createIndexCommand(getTestTable(t), "example_index_name", map[string]string{"example_map_column": "$keys"})
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleIndexMapKeysPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleIndexMapKeysPayloadJSON, string(cmdBytes))
+	}
+}
+
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/create-vector-index.html#example-default
+const exampleVectorIndexDefaultPayloadJSON = `{
+  "createVectorIndex": {
+    "name": "example_index_name",
+    "definition": {
+      "column": "example_vector_column"
+    }
+  }
+}`
+
+// TestCreateVectorIndexDefaultCommandMarshal verifies that the resulting command from createVectorIndexCommand
+// with default options matches the payload in the docs.
+func TestCreateVectorIndexDefaultCommandMarshal(t *testing.T) {
+	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column")
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleVectorIndexDefaultPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleVectorIndexDefaultPayloadJSON, string(cmdBytes))
+	}
+}
+
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/create-vector-index.html#example-model-metric
+const exampleVectorIndexModelMetricPayloadJSON = `{
+  "createVectorIndex": {
+    "name": "example_index_name",
+    "definition": {
+      "column": "example_vector_column",
+      "options": {
+        "metric": "dot_product",
+        "sourceModel": "ada002"
+      }
+    }
+  }
+}`
+
+// TestCreateVectorIndexModelMetricCommandMarshal verifies that the resulting command from createVectorIndexCommand
+// with custom metric and sourceModel matches the payload in the docs.
+func TestCreateVectorIndexModelMetricCommandMarshal(t *testing.T) {
+	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column",
+		options.WithMetric(options.MetricDotProduct),
+		options.WithSourceModel("ada002"),
+	)
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleVectorIndexModelMetricPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleVectorIndexModelMetricPayloadJSON, string(cmdBytes))
+	}
+}
+
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/create-vector-index.html#example-exists
+const exampleVectorIndexIfNotExistsPayloadJSON = `{
+  "createVectorIndex": {
+    "name": "example_index_name",
+    "definition": {
+      "column": "summary_genres_vector"
+    },
+    "options": {
+      "ifNotExists": true
+    }
+  }
+}`
+
+// TestCreateVectorIndexIfNotExistsCommandMarshal verifies that the resulting command from createVectorIndexCommand
+// with ifNotExists option matches the payload in the docs.
+func TestCreateVectorIndexIfNotExistsCommandMarshal(t *testing.T) {
+	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "summary_genres_vector",
+		options.WithVectorIndexIfNotExists(true),
+	)
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleVectorIndexIfNotExistsPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleVectorIndexIfNotExistsPayloadJSON, string(cmdBytes))
+	}
+}
+
 // Helper functions for creating pointers
 func intPtr(i int) *int {
 	return &i

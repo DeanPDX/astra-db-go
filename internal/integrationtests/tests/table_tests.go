@@ -230,6 +230,24 @@ func TableFind(e *harness.TestEnv) error {
 		return errors.New("expected warnings for filtering on non-indexed column but got none")
 	}
 
+	// Next, create index and verify warnings go away
+	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out", options.WithIndexIfNotExists(true)); err != nil {
+		return err
+	}
+
+	// Verify warnings go away after creating the index
+	// Find all books that are not checked out using cursor.All()
+	idxCursor := tbl.Find(ctx, filter.Eq("is_checked_out", false))
+	defer idxCursor.Close(ctx)
+
+	if err := idxCursor.All(ctx, &books); err != nil {
+		return err
+	}
+
+	if len(idxCursor.Warnings()) > 0 {
+		return fmt.Errorf("expected no warnings after index creation. Got: %v", idxCursor.Warnings())
+	}
+
 	return nil
 }
 
