@@ -21,6 +21,8 @@ import (
 	"errors"
 	"io"
 	"sync"
+
+	"github.com/datastax/astra-db-go/results"
 )
 
 // CursorState represents the current state of a cursor.
@@ -47,8 +49,9 @@ var ErrNoCurrentDocument = errors.New("no current document; call Next() first")
 // It receives the page state (nil for first page) and returns:
 // - documents: raw JSON array of documents
 // - nextPageState: state for fetching the next page (nil if no more pages)
+// - warnings: any warnings from the API response
 // - error: any error that occurred
-type PageFetcher func(ctx context.Context, pageState *string) (documents []json.RawMessage, nextPageState *string, err error)
+type PageFetcher func(ctx context.Context, pageState *string) (documents []json.RawMessage, nextPageState *string, warnings results.Warnings, err error)
 
 // Cursor provides an iterator interface for query results.
 //
@@ -101,6 +104,9 @@ type Cursor struct {
 
 	// Whether we've fetched the first page
 	initialized bool
+
+	// Accumulated warnings from all fetched pages
+	warnings results.Warnings
 }
 
 // New creates a new Cursor with the given page fetcher function.
@@ -124,7 +130,7 @@ func NewWithError(err error) *Cursor {
 
 // NewWithInitialData creates a new Cursor pre-populated with data from an initial response.
 // This is useful when the first page has already been fetched.
-func NewWithInitialData(documents []json.RawMessage, nextPageState *string, fetcher PageFetcher) *Cursor {
+func NewWithInitialData(documents []json.RawMessage, nextPageState *string, warnings results.Warnings, fetcher PageFetcher) *Cursor {
 	state := CursorStateIdle
 	if len(documents) == 0 && (nextPageState == nil || *nextPageState == "") {
 		state = CursorStateExhausted
@@ -137,6 +143,7 @@ func NewWithInitialData(documents []json.RawMessage, nextPageState *string, fetc
 		position:      -1,
 		nextPageState: nextPageState,
 		initialized:   true,
+		warnings:      warnings,
 	}
 }
 
@@ -215,7 +222,7 @@ func (c *Cursor) Next(ctx context.Context) bool {
 
 // fetchPageLocked fetches a page of results. Must be called with mutex held.
 func (c *Cursor) fetchPageLocked(ctx context.Context, pageState *string) error {
-	documents, nextState, err := c.fetcher(ctx, pageState)
+	documents, nextState, warnings, err := c.fetcher(ctx, pageState)
 	if err != nil {
 		return err
 	}
@@ -223,6 +230,11 @@ func (c *Cursor) fetchPageLocked(ctx context.Context, pageState *string) error {
 	c.buffer = documents
 	c.position = -1
 	c.nextPageState = nextState
+
+	// Accumulate warnings from each page
+	if len(warnings) > 0 {
+		c.warnings = append(c.warnings, warnings...)
+	}
 
 	return nil
 }
@@ -328,6 +340,14 @@ func (c *Cursor) Err() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.err
+}
+
+// Warnings returns all warnings accumulated during iteration.
+// This includes warnings from all pages that have been fetched.
+func (c *Cursor) Warnings() results.Warnings {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.warnings
 }
 
 // Close closes the cursor, releasing any resources.

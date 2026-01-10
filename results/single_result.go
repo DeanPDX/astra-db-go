@@ -20,15 +20,24 @@ import (
 
 // SingleResult represents a document returned from an operation.
 type SingleResult struct {
-	err     error
-	rawResp []byte
+	err      error
+	rawResp  []byte
+	warnings Warnings
 }
 
-func NewSingleResult(rawResp []byte, err error) *SingleResult {
+// NewSingleResult creates a new SingleResult with the given response, warnings, and error.
+func NewSingleResult(rawResp []byte, warnings Warnings, err error) *SingleResult {
 	return &SingleResult{
-		rawResp: rawResp,
-		err:     err,
+		rawResp:  rawResp,
+		warnings: warnings,
+		err:      err,
 	}
+}
+
+// Warnings returns any warnings from the API response.
+// Returns nil if there were no warnings.
+func (sr *SingleResult) Warnings() Warnings {
+	return sr.warnings
 }
 
 // JSON returned from the astra API is in a format like this:

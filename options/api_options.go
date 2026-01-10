@@ -17,6 +17,8 @@ package options
 import (
 	"net/http"
 	"time"
+
+	"github.com/datastax/astra-db-go/results"
 )
 
 // APIOptions contains all configurable options that can be set at any level
@@ -44,6 +46,10 @@ type APIOptions struct {
 
 	// Serdes contains serialization/deserialization options
 	Serdes *SerdesOptions
+
+	// WarningHandler is called for each warning received from the API.
+	// Set this at any level (Client, Database, Collection/Table, or Command).
+	WarningHandler WarningHandler
 }
 
 // TimeoutOptions contains timeout configuration for API operations.
@@ -64,6 +70,10 @@ type SerdesOptions struct {
 	// - Map encoding modes
 	// - Custom type converters
 }
+
+// WarningHandler is a callback function invoked for each warning in API responses.
+// Warnings indicate non-fatal conditions such as missing indexes or deprecated features.
+type WarningHandler func(w results.Warning)
 
 // APIOption is a function that modifies APIOptions.
 // Use the With* functions to create APIOption values.
@@ -151,6 +161,11 @@ func Merge(layers ...*APIOptions) *APIOptions {
 		// Merge serdes options
 		if layer.Serdes != nil {
 			result.Serdes = layer.Serdes
+		}
+
+		// Merge warning handler (later layers override)
+		if layer.WarningHandler != nil {
+			result.WarningHandler = layer.WarningHandler
 		}
 	}
 
@@ -241,6 +256,26 @@ func WithBulkOperationTimeout(d time.Duration) APIOption {
 // This is the most commonly used timeout setting.
 func WithTimeout(d time.Duration) APIOption {
 	return WithRequestTimeout(d)
+}
+
+// WithWarningHandler sets a callback to be invoked for each API warning.
+// The handler is called synchronously before the method returns.
+//
+// Example usage:
+//
+//	client := astradb.NewClient(
+//		options.WithToken("..."),
+//		options.WithWarningHandler(func(w results.Warning) {
+//			slog.Warn("API warning", "code", w.ErrorCode, "message", w.Message)
+//		}),
+//	)
+//
+// Warnings can indicate missing indexes, deprecated features, or other
+// non-fatal conditions that don't prevent the operation from completing.
+func WithWarningHandler(handler WarningHandler) APIOption {
+	return func(o *APIOptions) {
+		o.WarningHandler = handler
+	}
 }
 
 // Helper functions for getting values with defaults

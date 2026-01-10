@@ -141,7 +141,8 @@ func (d *Db) CreateTable(ctx context.Context, name string, definition table.Defi
 
 	// Execute the command
 	// Response is in format: {"status":{"ok":1}}
-	_, err := cmd.Execute(ctx)
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	_, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -162,9 +163,10 @@ type dropTablePayload struct {
 // Example usage:
 //
 //	err := db.DropTable(ctx, "my_table")
+// Note: Warnings are accessible via the WarningHandler option callback only.
 func (d *Db) DropTable(ctx context.Context, name string) error {
 	cmd := d.newCmd("dropTable", dropTablePayload{Name: name})
-	_, err := cmd.Execute(ctx)
+	_, _, err := cmd.Execute(ctx)
 	return err
 }
 
@@ -244,7 +246,7 @@ func (t *Table) Find(ctx context.Context, f any, opts ...options.TableFindOption
 	findOpts := options.NewTableFindOptions(opts...)
 
 	// Create a page fetcher that captures the table, filter, and options
-	fetcher := func(fetchCtx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
+	fetcher := func(fetchCtx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
 		payload := tableFindPayload{
 			Filter:     f,
 			Sort:       findOpts.Sort,
@@ -281,17 +283,17 @@ func (t *Table) Find(ctx context.Context, f any, opts ...options.TableFindOption
 		}
 
 		cmd := t.newCmd("find", payload)
-		b, err := cmd.Execute(fetchCtx)
+		b, warnings, err := cmd.Execute(fetchCtx)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, warnings, err
 		}
 
 		var resp tableFindResponse
 		if err := json.Unmarshal(b, &resp); err != nil {
-			return nil, nil, err
+			return nil, nil, warnings, err
 		}
 
-		return resp.Data.Documents, resp.Data.NextPageState, nil
+		return resp.Data.Documents, resp.Data.NextPageState, warnings, nil
 	}
 
 	return cursor.New(fetcher)
@@ -310,7 +312,7 @@ func (t *Table) FindOne(ctx context.Context, f any, opts ...options.TableFindOpt
 	case filter.F, filter.Filter, map[string]any, nil:
 		// Allowed filter types
 	default:
-		return results.NewSingleResult(nil, fmt.Errorf("invalid filter type: %T", f))
+		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %T", f))
 	}
 
 	// Build the find options
@@ -331,8 +333,8 @@ func (t *Table) FindOne(ctx context.Context, f any, opts ...options.TableFindOpt
 	}
 
 	cmd := t.newCmd("findOne", payload)
-	b, err := cmd.Execute(ctx)
-	return results.NewSingleResult(b, err)
+	b, warnings, err := cmd.Execute(ctx)
+	return results.NewSingleResult(b, warnings, err)
 }
 
 // tableInsertOnePayload is the payload for insertOne on tables
@@ -397,7 +399,8 @@ func (t *Table) InsertOne(ctx context.Context, row any, opts ...options.APIOptio
 	cmd := t.newCmd("insertOne", tableInsertOnePayload{
 		Document: row,
 	}, opts...)
-	b, err := cmd.Execute(ctx)
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	b, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return resp, err
 	}
@@ -431,7 +434,8 @@ func (t *Table) InsertMany(ctx context.Context, rows any, opts ...options.APIOpt
 	cmd := t.newCmd("insertMany", tableInsertManyPayload{
 		Documents: rows,
 	}, opts...)
-	b, err := cmd.Execute(ctx)
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	b, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return resp, err
 	}

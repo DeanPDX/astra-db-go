@@ -25,6 +25,7 @@ import (
 	"net/url"
 
 	"github.com/datastax/astra-db-go/options"
+	"github.com/datastax/astra-db-go/results"
 )
 
 // command represents a command to be executed against the astra DB.
@@ -143,10 +144,11 @@ func (c command) MarshalJSON() ([]byte, error) {
 }
 
 // Execute a command against the astra DB web API.
-func (c *command) Execute(ctx context.Context) ([]byte, error) {
+// Returns the response body, any warnings from the API, and any error that occurred.
+func (c *command) Execute(ctx context.Context) ([]byte, results.Warnings, error) {
 	var body []byte
 	if c.db == nil {
-		return body, ErrCmdNilDb
+		return body, nil, ErrCmdNilDb
 	}
 
 	// Resolve all options for this command
@@ -154,17 +156,17 @@ func (c *command) Execute(ctx context.Context) ([]byte, error) {
 
 	b, err := json.Marshal(c)
 	if err != nil {
-		return body, err
+		return body, nil, err
 	}
 	cmdURL, err := c.url()
 	if err != nil {
-		return body, err
+		return body, nil, err
 	}
 	slog.Debug("Running cmd.Execute", "req.url", cmdURL, "req.body", string(b))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", cmdURL, bytes.NewReader(b))
 	if err != nil {
-		return body, err
+		return body, nil, err
 	}
 
 	// Set authentication token from resolved options
@@ -183,45 +185,59 @@ func (c *command) Execute(ctx context.Context) ([]byte, error) {
 	httpClient := opts.GetHTTPClient()
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return body, err
+		return body, nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err = io.ReadAll(resp.Body)
 	slog.Debug("cmd.Execute response", "resp.StatusCode", resp.StatusCode, "resp.Status", resp.Status, "resp.body", string(body))
 	if err != nil {
-		return body, err
+		return body, nil, err
 	}
-	return c.ExtractErrors(resp.StatusCode, body)
+	return c.ExtractErrors(resp.StatusCode, body, opts)
 }
 
-// apiErrs is just to capture errors
-type apiErrs struct {
+// apiResponse captures both errors and warnings from API responses
+type apiResponse struct {
 	Errors DataAPIErrors `json:"errors"`
+	Status struct {
+		Warnings results.Warnings `json:"warnings"`
+	} `json:"status"`
 }
 
-// ExtractErrors will extract known errors from body. For example, it will
+// ExtractErrors will extract errors and warnings from body. For example, it will
 // turn this response into an error:
 //
 //	{"message":"Your database is resuming from hibernation and will be available in the next few minutes."}
-func (c *command) ExtractErrors(statusCode int, body []byte) ([]byte, error) {
+//
+// Will call WarningHandler if appropriate.
+func (c *command) ExtractErrors(statusCode int, body []byte, opts *options.APIOptions) ([]byte, results.Warnings, error) {
 	if statusCode >= 400 {
 		// We have a transport/server-level error so let's try to extract the message.
 		var transportErr DataAPIError
 		json.Unmarshal(body, &transportErr)
 		if len(transportErr.Message) > 0 {
-			return body, errors.New(transportErr.Message)
+			return body, nil, errors.New(transportErr.Message)
 		}
 		// We can't find a message; just return the body
-		return body, errors.New(string(body))
+		return body, nil, errors.New(string(body))
 	}
-	var errs apiErrs
-	// Ignoring errors here because we don't want to surface them to the client.
-	// We will catch any errors here with unit tests that expect errors and don't get them.
-	json.Unmarshal(body, &errs)
-	if len(errs.Errors) > 0 {
-		return body, &errs.Errors
+
+	// Parse the full response to get both errors and warnings
+	var resp apiResponse
+	json.Unmarshal(body, &resp)
+
+	// Invoke warning handler for each warning if configured
+	if opts != nil && opts.WarningHandler != nil && len(resp.Status.Warnings) > 0 {
+		for _, w := range resp.Status.Warnings {
+			opts.WarningHandler(w)
+		}
 	}
-	// No errors.
-	return body, nil
+
+	// Return error if present
+	if len(resp.Errors) > 0 {
+		return body, resp.Status.Warnings, &resp.Errors
+	}
+
+	return body, resp.Status.Warnings, nil
 }

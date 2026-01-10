@@ -71,6 +71,7 @@ func (d *Db) Collection(name string, opts ...options.APIOption) *Collection {
 }
 
 // CreateCollection creates a collection in the database.
+// Note: Warnings are accessible via the WarningHandler option callback only.
 func (d *Db) CreateCollection(ctx context.Context, name string, collOpts *options.CollectionOptions) (*Collection, error) {
 	payload := struct {
 		Name    string                     `json:"name"`
@@ -80,7 +81,7 @@ func (d *Db) CreateCollection(ctx context.Context, name string, collOpts *option
 		Options: collOpts,
 	}
 	cmd := d.newCmd("createCollection", payload)
-	_, err := cmd.Execute(ctx)
+	_, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +92,7 @@ func (d *Db) CreateCollection(ctx context.Context, name string, collOpts *option
 }
 
 // DropCollection drops a collection from the database.
+// Note: Warnings are accessible via the WarningHandler option callback only.
 func (d *Db) DropCollection(ctx context.Context, name string) error {
 	payload := struct {
 		Name string `json:"name"`
@@ -98,6 +100,6 @@ func (d *Db) DropCollection(ctx context.Context, name string) error {
 		Name: name,
 	}
 	cmd := newCmd(d, "deleteCollection", payload)
-	_, err := cmd.Execute(ctx)
+	_, _, err := cmd.Execute(ctx)
 	return err
 }

@@ -4,7 +4,14 @@ To get started with these integration tests, create an instance on [astra.datast
 - `API_ENDPOINT` - the endpoint for the instance you created.
 - `APPLICATION_TOKEN` - the token you just created.
 
-You can also use a `.env` file. Use [.env.example](./.env.example) as a template.
+You can also use a `.env` file. Use [.env.example](./.env.example) as a template. Note the `TEST_PREFIX` property in there and what it does. For this reason, prefix test names with their domain/area:
+
+```go
+// Bad. There's no prefix we can use to run all collection-related integration tests.
+func CreateCollection(e *harness.TestEnv) error { }
+// Good. Setting TEST_PREFIX to "Collection" will match this test.
+func CollectionCreate(e *harness.TestEnv) error { }
+```
 
 To run the tests:
 
@@ -14,4 +21,4 @@ To run the tests:
 go run github.com/datastax/astra-db-go/internal/integrationtests
 ```
 
-Note that the files in [./tests][./tests] end with `_tests.go`, not `_test.go` because they aren't actually unit tests and we don't want them excluded from the `integrationtests` executable.
+Note that the files in [./tests](./tests) end with `_tests.go`, not `_test.go` because they aren't actually unit tests and we don't want them excluded from the `integrationtests` executable.

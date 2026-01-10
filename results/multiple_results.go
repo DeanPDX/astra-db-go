@@ -20,15 +20,24 @@ import (
 
 // MultipleResult represents documents returned from an operation.
 type MultipleResult struct {
-	err     error
-	rawResp []byte
+	err      error
+	rawResp  []byte
+	warnings Warnings
 }
 
-func NewMultipleResult(rawResp []byte, err error) *MultipleResult {
+// NewMultipleResult creates a new MultipleResult with the given response, warnings, and error.
+func NewMultipleResult(rawResp []byte, warnings Warnings, err error) *MultipleResult {
 	return &MultipleResult{
-		rawResp: rawResp,
-		err:     err,
+		rawResp:  rawResp,
+		warnings: warnings,
+		err:      err,
 	}
+}
+
+// Warnings returns any warnings from the API response.
+// Returns nil if there were no warnings.
+func (mr *MultipleResult) Warnings() Warnings {
+	return mr.warnings
 }
 
 // JSON returned from the astra API is in a format like this:

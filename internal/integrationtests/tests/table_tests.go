@@ -9,6 +9,7 @@ import (
 	"github.com/datastax/astra-db-go/filter"
 	"github.com/datastax/astra-db-go/internal/integrationtests/harness"
 	"github.com/datastax/astra-db-go/options"
+	"github.com/datastax/astra-db-go/results"
 	"github.com/datastax/astra-db-go/table"
 )
 
@@ -193,7 +194,10 @@ func TableFindOne(e *harness.TestEnv) error {
 func TableFind(e *harness.TestEnv) error {
 	ctx := context.Background()
 	db := e.DefaultDb()
-	tbl := db.Table(tableName)
+	warningHandlerRun := false
+	tbl := db.Table(tableName, options.WithWarningHandler(func(w results.Warning) {
+		warningHandlerRun = true
+	}))
 
 	// Find all books that are not checked out using cursor.All()
 	cursor := tbl.Find(ctx, filter.Eq("is_checked_out", false))
@@ -213,6 +217,17 @@ func TableFind(e *harness.TestEnv) error {
 		if book.IsCheckedOut {
 			return fmt.Errorf("expected is_checked_out to be false for book %q", book.Title)
 		}
+	}
+
+	if !warningHandlerRun {
+		return errors.New("expected warning handler to run but it did not")
+	}
+
+	// We should have a MISSING_INDEX warning because we filtered by a non-indexed column.
+	// TODO: We could be more specific and check for the exact warning code/message. For now,
+	// just ensure we got some warnings. It's unclear if the code might change in the future.
+	if len(cursor.Warnings()) == 0 {
+		return errors.New("expected warnings for filtering on non-indexed column but got none")
 	}
 
 	return nil

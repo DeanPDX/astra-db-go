@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/datastax/astra-db-go/cursor"
+	"github.com/datastax/astra-db-go/results"
 )
 
 type testDoc struct {
@@ -46,12 +47,12 @@ func TestCursor_SinglePage(t *testing.T) {
 	}
 
 	fetchCount := 0
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
 		fetchCount++
 		if pageState != nil {
-			return nil, nil, nil // No more pages
+			return nil, nil, nil, nil // No more pages
 		}
-		return makeRawMessages(docs), nil, nil
+		return makeRawMessages(docs), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -89,43 +90,43 @@ func TestCursor_MultiplePages(t *testing.T) {
 	pageState1 := "page2"
 	pageState2 := "page3"
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
 		if pageState == nil {
-			return makeRawMessages(page1), &pageState1, nil
+			return makeRawMessages(page1), &pageState1, nil, nil
 		}
 		if *pageState == "page2" {
-			return makeRawMessages(page2), &pageState2, nil
+			return makeRawMessages(page2), &pageState2, nil, nil
 		}
 		if *pageState == "page3" {
-			return makeRawMessages(page3), nil, nil
+			return makeRawMessages(page3), nil, nil, nil
 		}
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
 	defer c.Close(context.Background())
 
-	var results []testDoc
+	var testResults []testDoc
 	for c.Next(context.Background()) {
 		var doc testDoc
 		if err := c.Decode(&doc); err != nil {
 			t.Fatalf("Decode failed: %v", err)
 		}
-		results = append(results, doc)
+		testResults = append(testResults, doc)
 	}
 
 	if err := c.Err(); err != nil {
 		t.Fatalf("Cursor error: %v", err)
 	}
 
-	if len(results) != 5 {
-		t.Errorf("expected 5 results, got %d", len(results))
+	if len(testResults) != 5 {
+		t.Errorf("expected 5 results, got %d", len(testResults))
 	}
 
 	expectedNames := []string{"Alice", "Bob", "Charlie", "Diana", "Eve"}
 	for i, expected := range expectedNames {
-		if results[i].Name != expected {
-			t.Errorf("result[%d]: expected %s, got %s", i, expected, results[i].Name)
+		if testResults[i].Name != expected {
+			t.Errorf("result[%d]: expected %s, got %s", i, expected, testResults[i].Name)
 		}
 	}
 }
@@ -136,23 +137,23 @@ func TestCursor_All(t *testing.T) {
 
 	pageState1 := "page2"
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
 		if pageState == nil {
-			return makeRawMessages(page1), &pageState1, nil
+			return makeRawMessages(page1), &pageState1, nil, nil
 		}
-		return makeRawMessages(page2), nil, nil
+		return makeRawMessages(page2), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
 	defer c.Close(context.Background())
 
-	var results []testDoc
-	if err := c.All(context.Background(), &results); err != nil {
+	var testResults []testDoc
+	if err := c.All(context.Background(), &testResults); err != nil {
 		t.Fatalf("All failed: %v", err)
 	}
 
-	if len(results) != 3 {
-		t.Errorf("expected 3 results, got %d", len(results))
+	if len(testResults) != 3 {
+		t.Errorf("expected 3 results, got %d", len(testResults))
 	}
 
 	if c.State() != cursor.CursorStateExhausted {
@@ -161,8 +162,8 @@ func TestCursor_All(t *testing.T) {
 }
 
 func TestCursor_EmptyResults(t *testing.T) {
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return []json.RawMessage{}, nil, nil
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return []json.RawMessage{}, nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -176,20 +177,20 @@ func TestCursor_EmptyResults(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	var results []testDoc
-	if err := c.All(context.Background(), &results); err != nil {
+	var testResults []testDoc
+	if err := c.All(context.Background(), &testResults); err != nil {
 		t.Fatalf("All failed: %v", err)
 	}
-	if len(results) != 0 {
-		t.Errorf("expected empty results, got %d", len(results))
+	if len(testResults) != 0 {
+		t.Errorf("expected empty results, got %d", len(testResults))
 	}
 }
 
 func TestCursor_FetchError(t *testing.T) {
 	expectedErr := errors.New("network error")
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return nil, nil, expectedErr
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return nil, nil, nil, expectedErr
 	}
 
 	c := cursor.New(fetcher)
@@ -205,8 +206,8 @@ func TestCursor_FetchError(t *testing.T) {
 }
 
 func TestCursor_Close(t *testing.T) {
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return makeRawMessages([]testDoc{{ID: 1, Name: "Alice"}}), nil, nil
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return makeRawMessages([]testDoc{{ID: 1, Name: "Alice"}}), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -236,8 +237,8 @@ func TestCursor_Close(t *testing.T) {
 }
 
 func TestCursor_DecodeWithoutNext(t *testing.T) {
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return makeRawMessages([]testDoc{{ID: 1, Name: "Alice"}}), nil, nil
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return makeRawMessages([]testDoc{{ID: 1, Name: "Alice"}}), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -257,37 +258,37 @@ func TestCursor_WithInitialData(t *testing.T) {
 	pageState := "page2"
 	fetchCalled := false
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
 		fetchCalled = true
-		return makeRawMessages(page2), nil, nil
+		return makeRawMessages(page2), nil, nil, nil
 	}
 
-	c := cursor.NewWithInitialData(makeRawMessages(initialDocs), &pageState, fetcher)
+	c := cursor.NewWithInitialData(makeRawMessages(initialDocs), &pageState, nil, fetcher)
 	defer c.Close(context.Background())
 
-	var results []testDoc
+	var testResults []testDoc
 	for c.Next(context.Background()) {
 		var doc testDoc
 		if err := c.Decode(&doc); err != nil {
 			t.Fatalf("Decode failed: %v", err)
 		}
-		results = append(results, doc)
+		testResults = append(testResults, doc)
 	}
 
 	if !fetchCalled {
 		t.Error("expected fetcher to be called for page 2")
 	}
 
-	if len(results) != 3 {
-		t.Errorf("expected 3 results, got %d", len(results))
+	if len(testResults) != 3 {
+		t.Errorf("expected 3 results, got %d", len(testResults))
 	}
 }
 
 func TestCursor_Current(t *testing.T) {
 	docs := []testDoc{{ID: 1, Name: "Alice"}}
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return makeRawMessages(docs), nil, nil
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return makeRawMessages(docs), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -321,8 +322,8 @@ func TestCursor_Iterate(t *testing.T) {
 		{ID: 3, Name: "Charlie"},
 	}
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return makeRawMessages(docs), nil, nil
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return makeRawMessages(docs), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -354,8 +355,8 @@ func TestCursor_IterateEarlyStop(t *testing.T) {
 		{ID: 3, Name: "Charlie"},
 	}
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return makeRawMessages(docs), nil, nil
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return makeRawMessages(docs), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -382,8 +383,8 @@ func TestCursor_IterateEarlyStop(t *testing.T) {
 func TestCursor_TryDecode(t *testing.T) {
 	docs := []testDoc{{ID: 1, Name: "Alice"}}
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return makeRawMessages(docs), nil, nil
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return makeRawMessages(docs), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -407,8 +408,8 @@ func TestCursor_RemainingBatchLength(t *testing.T) {
 		{ID: 3, Name: "Charlie"},
 	}
 
-	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, error) {
-		return makeRawMessages(docs), nil, nil
+	fetcher := func(ctx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
+		return makeRawMessages(docs), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
@@ -438,11 +439,11 @@ func TestCursor_RemainingBatchLength(t *testing.T) {
 func TestCursor_HasNextPage(t *testing.T) {
 	pageState := "page2"
 
-	fetcher := func(ctx context.Context, ps *string) ([]json.RawMessage, *string, error) {
+	fetcher := func(ctx context.Context, ps *string) ([]json.RawMessage, *string, results.Warnings, error) {
 		if ps == nil {
-			return makeRawMessages([]testDoc{{ID: 1}}), &pageState, nil
+			return makeRawMessages([]testDoc{{ID: 1}}), &pageState, nil, nil
 		}
-		return makeRawMessages([]testDoc{{ID: 2}}), nil, nil
+		return makeRawMessages([]testDoc{{ID: 2}}), nil, nil, nil
 	}
 
 	c := cursor.New(fetcher)
