@@ -934,6 +934,162 @@ func TestDropTableIndexCommandURL(t *testing.T) {
 	}
 }
 
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/list-index-metadata.html#example-names
+const exampleListIndexesNamesOnlyPayloadJSON = `{
+  "listIndexes": {}
+}`
+
+// TestListIndexesNamesOnlyCommandMarshal verifies that the resulting command from listIndexesCommand
+// with default options (no explain) matches the payload in the docs.
+func TestListIndexesNamesOnlyCommandMarshal(t *testing.T) {
+	cmd := listIndexesCommand(getTestTable(t))
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleListIndexesNamesOnlyPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleListIndexesNamesOnlyPayloadJSON, string(cmdBytes))
+	}
+}
+
+// This example was taken from the documentation here:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/list-index-metadata.html#example-explain
+const exampleListIndexesExplainPayloadJSON = `{
+  "listIndexes": {
+    "options": {
+      "explain": true
+    }
+  }
+}`
+
+// TestListIndexesExplainCommandMarshal verifies that the resulting command from listIndexesCommand
+// with explain=true matches the payload in the docs.
+func TestListIndexesExplainCommandMarshal(t *testing.T) {
+	cmd := listIndexesCommand(getTestTable(t), options.WithExplain(true))
+	// MarshalIndent and match the indentation of the example JSON
+	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if string(cmdBytes) != exampleListIndexesExplainPayloadJSON {
+		t.Errorf("expected JSON:\n%s\nGot:\n%s", exampleListIndexesExplainPayloadJSON, string(cmdBytes))
+	}
+}
+
+// TestListIndexesCommandURL verifies that the listIndexesCommand URL
+// is correct (should hit the table endpoint).
+func TestListIndexesCommandURL(t *testing.T) {
+	cmd := listIndexesCommand(getTestTable(t))
+	postURL, err := cmd.url()
+	if err != nil {
+		t.Fatalf("cmd.url: %v", err)
+	}
+	// Verify the URL matches what example CURL command is expecting
+	expectedURL := "https://API_ENDPOINT/api/json/v1/some_keyspace/example_table"
+	if postURL != expectedURL {
+		t.Errorf("expected URL %s, got %s", expectedURL, postURL)
+	}
+}
+
+// TestListIndexesResponseUnmarshal tests unmarshaling the listIndexes response.
+func TestListIndexesResponseUnmarshal(t *testing.T) {
+	t.Run("names only response", func(t *testing.T) {
+		// When explain=false, the API returns an array of strings
+		jsonResp := `{"status":{"indexes":["rating_idx","title_idx"]}}`
+		var resp listIndexesResponse
+		if err := json.Unmarshal([]byte(jsonResp), &resp); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if len(resp.Status.Indexes) != 2 {
+			t.Errorf("expected 2 indexes, got %d", len(resp.Status.Indexes))
+		}
+		if resp.Status.Indexes[0].Name != "rating_idx" {
+			t.Errorf("expected index name 'rating_idx', got %s", resp.Status.Indexes[0].Name)
+		}
+		if resp.Status.Indexes[1].Name != "title_idx" {
+			t.Errorf("expected index name 'title_idx', got %s", resp.Status.Indexes[1].Name)
+		}
+		// Definition should be nil for names-only response
+		if resp.Status.Indexes[0].Definition != nil {
+			t.Error("expected definition to be nil for names-only response")
+		}
+	})
+
+	t.Run("explain response with regular index", func(t *testing.T) {
+		jsonResp := `{"status":{"indexes":[{"name":"rating_idx","definition":{"column":"rating"},"indexType":"regular"}]}}`
+		var resp listIndexesResponse
+		if err := json.Unmarshal([]byte(jsonResp), &resp); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if len(resp.Status.Indexes) != 1 {
+			t.Fatalf("expected 1 index, got %d", len(resp.Status.Indexes))
+		}
+		idx := resp.Status.Indexes[0]
+		if idx.Name != "rating_idx" {
+			t.Errorf("expected index name 'rating_idx', got %s", idx.Name)
+		}
+		if idx.IndexType != "regular" {
+			t.Errorf("expected indexType 'regular', got %s", idx.IndexType)
+		}
+		if idx.Definition == nil {
+			t.Fatal("expected definition to be present")
+		}
+		if idx.Definition.Column != "rating" {
+			t.Errorf("expected column 'rating', got %s", idx.Definition.Column)
+		}
+	})
+
+	t.Run("explain response with vector index", func(t *testing.T) {
+		jsonResp := `{"status":{"indexes":[{"name":"embedding_idx","definition":{"column":"embedding","options":{"metric":"cosine","sourceModel":"other"}},"indexType":"vector"}]}}`
+		var resp listIndexesResponse
+		if err := json.Unmarshal([]byte(jsonResp), &resp); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if len(resp.Status.Indexes) != 1 {
+			t.Fatalf("expected 1 index, got %d", len(resp.Status.Indexes))
+		}
+		idx := resp.Status.Indexes[0]
+		if idx.Name != "embedding_idx" {
+			t.Errorf("expected index name 'embedding_idx', got %s", idx.Name)
+		}
+		if idx.IndexType != "vector" {
+			t.Errorf("expected indexType 'vector', got %s", idx.IndexType)
+		}
+		if idx.Definition == nil {
+			t.Fatal("expected definition to be present")
+		}
+		if idx.Definition.Column != "embedding" {
+			t.Errorf("expected column 'embedding', got %s", idx.Definition.Column)
+		}
+		if idx.Definition.Options == nil {
+			t.Fatal("expected options to be present")
+		}
+		if idx.Definition.Options.Metric != "cosine" {
+			t.Errorf("expected metric 'cosine', got %s", idx.Definition.Options.Metric)
+		}
+		if idx.Definition.Options.SourceModel != "other" {
+			t.Errorf("expected sourceModel 'other', got %s", idx.Definition.Options.SourceModel)
+		}
+	})
+
+	t.Run("empty indexes", func(t *testing.T) {
+		jsonResp := `{"status":{"indexes":[]}}`
+		var resp listIndexesResponse
+		if err := json.Unmarshal([]byte(jsonResp), &resp); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if len(resp.Status.Indexes) != 0 {
+			t.Errorf("expected 0 indexes, got %d", len(resp.Status.Indexes))
+		}
+	})
+}
+
 // Helper functions for creating pointers
 func intPtr(i int) *int {
 	return &i

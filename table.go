@@ -632,3 +632,127 @@ func createVectorIndexCommand(t *Table, name string, column string, opts ...opti
 
 	return t.newCmd("createVectorIndex", payload)
 }
+
+// IndexDescriptor describes an index on a table.
+// When listing indexes with explain=true, all fields are populated.
+// When explain=false, only Name is populated.
+type IndexDescriptor struct {
+	// Name is the index identifier.
+	Name string `json:"name"`
+	// Definition contains the column and options for the index.
+	// Only populated when explain=true.
+	Definition *IndexDefinition `json:"definition,omitempty"`
+	// IndexType is either "regular" or "vector".
+	// Only populated when explain=true.
+	IndexType string `json:"indexType,omitempty"`
+}
+
+// UnmarshalJSON implements custom unmarshaling for IndexDescriptor.
+// The API returns either a string (name only) or an object (full metadata)
+// depending on the explain option.
+func (d *IndexDescriptor) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as a string first (names only response)
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		d.Name = name
+		return nil
+	}
+
+	// Otherwise unmarshal as an object (explain=true response)
+	type indexDescriptorAlias IndexDescriptor
+	var alias indexDescriptorAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*d = IndexDescriptor(alias)
+	return nil
+}
+
+// IndexDefinition describes which column is indexed and its options.
+type IndexDefinition struct {
+	// Column is the name of the indexed column.
+	Column string `json:"column"`
+	// Options contains index-specific configuration.
+	Options *IndexDefinitionOptions `json:"options,omitempty"`
+}
+
+// IndexDefinitionOptions contains configuration for an index.
+type IndexDefinitionOptions struct {
+	// Metric is the similarity metric for vector indexes (cosine, dot_product, euclidean).
+	Metric string `json:"metric,omitempty"`
+	// SourceModel is the embedding model identifier for vector indexes.
+	SourceModel string `json:"sourceModel,omitempty"`
+	// Ascii if true, converts non-ASCII characters to US-ASCII before indexing.
+	Ascii *bool `json:"ascii,omitempty"`
+	// Normalize if true, applies Unicode character normalization before indexing.
+	Normalize *bool `json:"normalize,omitempty"`
+	// CaseSensitive if true, enforces case-sensitive matching.
+	CaseSensitive *bool `json:"caseSensitive,omitempty"`
+}
+
+// listIndexesPayload is the payload for the listIndexes command
+type listIndexesPayload struct {
+	Options *listIndexesOpts `json:"options,omitempty"`
+}
+
+// listIndexesOpts contains options for the listIndexes command
+type listIndexesOpts struct {
+	Explain bool `json:"explain,omitempty"`
+}
+
+// listIndexesResponse is the response from the listIndexes command
+type listIndexesResponse struct {
+	Status struct {
+		Indexes []IndexDescriptor `json:"indexes"`
+	} `json:"status"`
+}
+
+// ListIndexes lists indexes on the table.
+//
+// By default, only index names are returned. Use WithExplain(true) to get
+// full index metadata including column definitions and options.
+//
+// Example - list index names only:
+//
+//	indexes, err := tbl.ListIndexes(ctx)
+//	for _, idx := range indexes {
+//	    fmt.Println(idx.Name)
+//	}
+//
+// Example - list with full metadata:
+//
+//	indexes, err := tbl.ListIndexes(ctx, options.WithExplain(true))
+//	for _, idx := range indexes {
+//	    fmt.Printf("Index %s on column %s (type: %s)\n",
+//	        idx.Name, idx.Definition.Column, idx.IndexType)
+//	}
+func (t *Table) ListIndexes(ctx context.Context, opts ...options.ListIndexesOption) ([]IndexDescriptor, error) {
+	cmd := listIndexesCommand(t, opts...)
+	b, _, err := cmd.Execute(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp listIndexesResponse
+	if err := json.Unmarshal(b, &resp); err != nil {
+		return nil, err
+	}
+
+	return resp.Status.Indexes, nil
+}
+
+// listIndexesCommand builds the listIndexes command for the table
+func listIndexesCommand(t *Table, opts ...options.ListIndexesOption) command {
+	listOpts := options.NewListIndexesOptions(opts...)
+
+	payload := listIndexesPayload{}
+
+	// Add options if explain is set
+	if listOpts.Explain {
+		payload.Options = &listIndexesOpts{
+			Explain: listOpts.Explain,
+		}
+	}
+
+	return t.newCmd("listIndexes", payload)
+}

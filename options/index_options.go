@@ -133,3 +133,30 @@ func NewCreateVectorIndexOptions(opts ...VectorIndexOption) *CreateVectorIndexOp
 	}
 	return options
 }
+
+// ListIndexesOptions represents options for listing indexes
+type ListIndexesOptions struct {
+	// Explain if true, returns full index metadata including definitions.
+	// If false, only returns index names.
+	Explain bool
+}
+
+// ListIndexesOption is a functional option for configuring ListIndexesOptions
+type ListIndexesOption func(*ListIndexesOptions)
+
+// WithExplain sets the explain option for listing indexes.
+// When true, returns full index metadata. When false, returns only index names.
+func WithExplain(v bool) ListIndexesOption {
+	return func(opts *ListIndexesOptions) {
+		opts.Explain = v
+	}
+}
+
+// NewListIndexesOptions creates a ListIndexesOptions with the provided options applied
+func NewListIndexesOptions(opts ...ListIndexesOption) *ListIndexesOptions {
+	options := &ListIndexesOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	return options
+}

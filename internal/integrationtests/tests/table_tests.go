@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/datastax/astra-db-go/filter"
 	"github.com/datastax/astra-db-go/internal/integrationtests/harness"
@@ -24,6 +25,7 @@ func init() {
 		{Name: "TableFindWithCursor", Run: TableFindWithCursor},
 		{Name: "TableFindWithSort", Run: TableFindWithSort},
 		{Name: "TableFindWithProjection", Run: TableFindWithProjection},
+		{Name: "TableListIndexes", Run: TableListIndexes},
 		{Name: "TableDrop", Run: TableDrop},
 	}
 	harness.Register(t...)
@@ -235,6 +237,11 @@ func TableFind(e *harness.TestEnv) error {
 		return err
 	}
 
+	// Creating an index and then immediately querying seems to cause the following error:
+	// > The Data API command generated a database query that was syntactically correct and the database started processing, however too many nodes failed to complete the operation...
+	// See: https://github.com/datastax/astra-db-go/issues/4
+	time.Sleep(2 * time.Second)
+
 	// Verify warnings go away after creating the index
 	// Find all books that are not checked out using cursor.All()
 	idxCursor := tbl.Find(ctx, filter.Eq("is_checked_out", false))
@@ -357,6 +364,75 @@ func TableFindWithProjection(e *harness.TestEnv) error {
 	// Check that other fields are not present (or are zero/nil)
 	if rating, ok := book["rating"]; ok && rating != nil && !reflect.ValueOf(rating).IsZero() {
 		return fmt.Errorf("expected rating to be excluded from projection, got %v", rating)
+	}
+
+	return nil
+}
+
+func TableListIndexes(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	tbl := db.Table(tableName)
+
+	// Create an index for testing
+	indexName := "rating_idx"
+	if err := tbl.CreateIndex(ctx, indexName, "rating", options.WithIndexIfNotExists(true)); err != nil {
+		return fmt.Errorf("failed to create index: %w", err)
+	}
+
+	// Test listing indexes without explain (names only)
+	indexes, err := tbl.ListIndexes(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list indexes: %w", err)
+	}
+
+	// Verify we got at least one index
+	if len(indexes) == 0 {
+		return errors.New("expected at least one index")
+	}
+
+	// Verify our index is in the list
+	found := false
+	for _, idx := range indexes {
+		if idx.Name == indexName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("expected to find index %q in list", indexName)
+	}
+
+	// Test listing indexes with explain (full metadata)
+	indexesExplain, err := tbl.ListIndexes(ctx, options.WithExplain(true))
+	if err != nil {
+		return fmt.Errorf("failed to list indexes with explain: %w", err)
+	}
+
+	// Verify we got the same number of indexes
+	if len(indexesExplain) != len(indexes) {
+		return fmt.Errorf("expected %d indexes with explain, got %d", len(indexes), len(indexesExplain))
+	}
+
+	// Find our index and verify metadata
+	for _, idx := range indexesExplain {
+		if idx.Name == indexName {
+			if idx.Definition == nil {
+				return errors.New("expected definition to be present with explain=true")
+			}
+			if idx.Definition.Column != "rating" {
+				return fmt.Errorf("expected column 'rating', got %q", idx.Definition.Column)
+			}
+			if idx.IndexType != "regular" {
+				return fmt.Errorf("expected indexType 'regular', got %q", idx.IndexType)
+			}
+			break
+		}
+	}
+
+	// Clean up the index
+	if err := db.DropTableIndex(ctx, indexName); err != nil {
+		return fmt.Errorf("failed to drop index: %w", err)
 	}
 
 	return nil
