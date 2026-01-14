@@ -721,7 +721,7 @@ const exampleIndexPayloadJSON = `{
 // TestCreateIndexCommandMarshal verifies that the resulting command from createIndexCommand matches
 // the payload in the docs.
 func TestCreateIndexCommandMarshal(t *testing.T) {
-	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.WithIndexIfNotExists(true))
+	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetIfNotExists(true))
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -733,7 +733,7 @@ func TestCreateIndexCommandMarshal(t *testing.T) {
 }
 
 func TestCreateIndexCommandURL(t *testing.T) {
-	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.WithIndexIfNotExists(true))
+	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetIfNotExists(true))
 	postURL, err := cmd.url()
 	if err != nil {
 		t.Fatalf("cmd.url: %v", err)
@@ -762,7 +762,7 @@ const exampleIndexASCIIPayloadJSON = `{
 // TestCreateIndexASCIICommandMarshal verifies that the resulting command from createIndexCommand
 // with the ascii option matches the payload in the docs.
 func TestCreateIndexASCIICommandMarshal(t *testing.T) {
-	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.WithAscii(true))
+	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetAscii(true))
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -789,7 +789,7 @@ const exampleIndexMapKeysPayloadJSON = `{
 // TestCreateIndexMapKeysCommandMarshal verifies that the resulting command from createIndexCommand
 // with a map column keys index matches the payload in the docs.
 func TestCreateIndexMapKeysCommandMarshal(t *testing.T) {
-	cmd := createIndexCommand(getTestTable(t), "example_index_name", map[string]string{"example_map_column": "$keys"})
+	cmd := createIndexCommand(getTestTable(t), "example_index_name", map[string]string{"example_map_column": "$keys"}, nil)
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -814,7 +814,7 @@ const exampleVectorIndexDefaultPayloadJSON = `{
 // TestCreateVectorIndexDefaultCommandMarshal verifies that the resulting command from createVectorIndexCommand
 // with default options matches the payload in the docs.
 func TestCreateVectorIndexDefaultCommandMarshal(t *testing.T) {
-	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column")
+	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column", nil)
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -844,9 +844,7 @@ const exampleVectorIndexModelMetricPayloadJSON = `{
 // with custom metric and sourceModel matches the payload in the docs.
 func TestCreateVectorIndexModelMetricCommandMarshal(t *testing.T) {
 	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column",
-		options.WithMetric(options.MetricDotProduct),
-		options.WithSourceModel("ada002"),
-	)
+		options.CreateVectorIndex().SetMetric(options.MetricDotProduct).SetSourceModel("ada002"))
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -875,8 +873,7 @@ const exampleVectorIndexIfNotExistsPayloadJSON = `{
 // with ifNotExists option matches the payload in the docs.
 func TestCreateVectorIndexIfNotExistsCommandMarshal(t *testing.T) {
 	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "summary_genres_vector",
-		options.WithVectorIndexIfNotExists(true),
-	)
+		options.CreateVectorIndex().SetIfNotExists(true))
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -943,7 +940,7 @@ const exampleListIndexesNamesOnlyPayloadJSON = `{
 // TestListIndexesNamesOnlyCommandMarshal verifies that the resulting command from listIndexesCommand
 // with default options (no explain) matches the payload in the docs.
 func TestListIndexesNamesOnlyCommandMarshal(t *testing.T) {
-	cmd := listIndexesCommand(getTestTable(t))
+	cmd := listIndexesCommand(getTestTable(t), nil)
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -967,7 +964,7 @@ const exampleListIndexesExplainPayloadJSON = `{
 // TestListIndexesExplainCommandMarshal verifies that the resulting command from listIndexesCommand
 // with explain=true matches the payload in the docs.
 func TestListIndexesExplainCommandMarshal(t *testing.T) {
-	cmd := listIndexesCommand(getTestTable(t), options.WithExplain(true))
+	cmd := listIndexesCommand(getTestTable(t), options.ListIndexes().SetExplain(true))
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -981,7 +978,7 @@ func TestListIndexesExplainCommandMarshal(t *testing.T) {
 // TestListIndexesCommandURL verifies that the listIndexesCommand URL
 // is correct (should hit the table endpoint).
 func TestListIndexesCommandURL(t *testing.T) {
-	cmd := listIndexesCommand(getTestTable(t))
+	cmd := listIndexesCommand(getTestTable(t), nil)
 	postURL, err := cmd.url()
 	if err != nil {
 		t.Fatalf("cmd.url: %v", err)

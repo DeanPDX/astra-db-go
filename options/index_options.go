@@ -21,7 +21,7 @@ const (
 	MetricEuclidean  = "euclidean"
 )
 
-// CreateIndexOptions represents options for creating a regular index
+// CreateIndexOptions represents options for creating a regular index.
 type CreateIndexOptions struct {
 	// IfNotExists if true, the command will silently succeed even if an index
 	// with the given name already exists. This only checks index names, not definitions.
@@ -40,50 +40,40 @@ type CreateIndexOptions struct {
 	CaseSensitive *bool
 }
 
-// IndexOption is a functional option for configuring CreateIndexOptions
-type IndexOption func(*CreateIndexOptions)
-
-// WithIndexIfNotExists sets the ifNotExists option for index creation
-func WithIndexIfNotExists(v bool) IndexOption {
-	return func(opts *CreateIndexOptions) {
-		opts.IfNotExists = v
-	}
+// CreateIndex creates a new CreateIndexOptions builder.
+func CreateIndex() *CreateIndexOptions {
+	return &CreateIndexOptions{}
 }
 
-// WithAscii sets the ascii option for text index creation.
+// SetIfNotExists sets the ifNotExists option for index creation.
+// When true, the command will silently succeed even if an index with the given name already exists.
+func (o *CreateIndexOptions) SetIfNotExists(v bool) *CreateIndexOptions {
+	o.IfNotExists = v
+	return o
+}
+
+// SetAscii sets the ascii option for text index creation.
 // When true, converts non-ASCII characters to US-ASCII before indexing.
-func WithAscii(v bool) IndexOption {
-	return func(opts *CreateIndexOptions) {
-		opts.Ascii = &v
-	}
+func (o *CreateIndexOptions) SetAscii(v bool) *CreateIndexOptions {
+	o.Ascii = &v
+	return o
 }
 
-// WithNormalize sets the normalize option for text index creation.
+// SetNormalize sets the normalize option for text index creation.
 // When true, applies Unicode character normalization before indexing.
-func WithNormalize(v bool) IndexOption {
-	return func(opts *CreateIndexOptions) {
-		opts.Normalize = &v
-	}
+func (o *CreateIndexOptions) SetNormalize(v bool) *CreateIndexOptions {
+	o.Normalize = &v
+	return o
 }
 
-// WithCaseSensitive sets the caseSensitive option for text index creation.
+// SetCaseSensitive sets the caseSensitive option for text index creation.
 // When true (default), enforces case-sensitive matching.
-func WithCaseSensitive(v bool) IndexOption {
-	return func(opts *CreateIndexOptions) {
-		opts.CaseSensitive = &v
-	}
+func (o *CreateIndexOptions) SetCaseSensitive(v bool) *CreateIndexOptions {
+	o.CaseSensitive = &v
+	return o
 }
 
-// NewCreateIndexOptions creates a CreateIndexOptions with the provided options applied
-func NewCreateIndexOptions(opts ...IndexOption) *CreateIndexOptions {
-	options := &CreateIndexOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-	return options
-}
-
-// CreateVectorIndexOptions represents options for creating a vector index
+// CreateVectorIndexOptions represents options for creating a vector index.
 type CreateVectorIndexOptions struct {
 	// IfNotExists if true, the command will silently succeed even if an index
 	// with the given name already exists. This only checks index names, not definitions.
@@ -99,64 +89,47 @@ type CreateVectorIndexOptions struct {
 	SourceModel string
 }
 
-// VectorIndexOption is a functional option for configuring CreateVectorIndexOptions
-type VectorIndexOption func(*CreateVectorIndexOptions)
-
-// WithVectorIndexIfNotExists sets the ifNotExists option for vector index creation
-func WithVectorIndexIfNotExists(v bool) VectorIndexOption {
-	return func(opts *CreateVectorIndexOptions) {
-		opts.IfNotExists = v
-	}
+// CreateVectorIndex creates a new CreateVectorIndexOptions builder.
+func CreateVectorIndex() *CreateVectorIndexOptions {
+	return &CreateVectorIndexOptions{}
 }
 
-// WithMetric sets the similarity metric for vector search.
+// SetIfNotExists sets the ifNotExists option for vector index creation.
+// When true, the command will silently succeed even if an index with the given name already exists.
+func (o *CreateVectorIndexOptions) SetIfNotExists(v bool) *CreateVectorIndexOptions {
+	o.IfNotExists = v
+	return o
+}
+
+// SetMetric sets the similarity metric for vector search.
 // Valid values: MetricCosine, MetricDotProduct, MetricEuclidean
-func WithMetric(metric string) VectorIndexOption {
-	return func(opts *CreateVectorIndexOptions) {
-		opts.Metric = metric
-	}
+func (o *CreateVectorIndexOptions) SetMetric(metric string) *CreateVectorIndexOptions {
+	o.Metric = metric
+	return o
 }
 
-// WithSourceModel sets the source model for vector index optimization.
+// SetSourceModel sets the source model for vector index optimization.
 // This enables provider-specific optimizations for the embedding model used.
-func WithSourceModel(model string) VectorIndexOption {
-	return func(opts *CreateVectorIndexOptions) {
-		opts.SourceModel = model
-	}
+func (o *CreateVectorIndexOptions) SetSourceModel(model string) *CreateVectorIndexOptions {
+	o.SourceModel = model
+	return o
 }
 
-// NewCreateVectorIndexOptions creates a CreateVectorIndexOptions with the provided options applied
-func NewCreateVectorIndexOptions(opts ...VectorIndexOption) *CreateVectorIndexOptions {
-	options := &CreateVectorIndexOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-	return options
-}
-
-// ListIndexesOptions represents options for listing indexes
+// ListIndexesOptions represents options for listing indexes.
 type ListIndexesOptions struct {
 	// Explain if true, returns full index metadata including definitions.
-	// If false, only returns index names.
+	// If false (default), only returns index names.
 	Explain bool
 }
 
-// ListIndexesOption is a functional option for configuring ListIndexesOptions
-type ListIndexesOption func(*ListIndexesOptions)
-
-// WithExplain sets the explain option for listing indexes.
-// When true, returns full index metadata. When false, returns only index names.
-func WithExplain(v bool) ListIndexesOption {
-	return func(opts *ListIndexesOptions) {
-		opts.Explain = v
-	}
+// ListIndexes creates a new ListIndexesOptions builder.
+func ListIndexes() *ListIndexesOptions {
+	return &ListIndexesOptions{}
 }
 
-// NewListIndexesOptions creates a ListIndexesOptions with the provided options applied
-func NewListIndexesOptions(opts ...ListIndexesOption) *ListIndexesOptions {
-	options := &ListIndexesOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-	return options
+// SetExplain sets the explain option for listing indexes.
+// When true, returns full index metadata. When false, returns only index names.
+func (o *ListIndexesOptions) SetExplain(v bool) *ListIndexesOptions {
+	o.Explain = v
+	return o
 }

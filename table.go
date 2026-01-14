@@ -517,38 +517,35 @@ type vectorIndexDefOpts struct {
 //   - A string for regular column indexes: "column_name"
 //   - A map for indexing map column keys or values: map[string]string{"map_col": "$keys"}
 //
-// For text columns, you can configure index behavior using options like
-// WithAscii, WithNormalize, and WithCaseSensitive.
+// For text columns, you can configure index behavior using SetAscii, SetNormalize,
+// and SetCaseSensitive on the options builder.
 //
 // Example - basic column index:
 //
-//	err := tbl.CreateIndex(ctx, "rating_idx", "rating")
+//	err := tbl.CreateIndex(ctx, "rating_idx", "rating", nil)
 //
 // Example - text column with case-insensitive matching:
 //
 //	err := tbl.CreateIndex(ctx, "title_idx", "title",
-//	    options.WithCaseSensitive(false),
-//	)
+//	    options.CreateIndex().SetCaseSensitive(false))
 //
 // Example - map column keys index:
 //
-//	err := tbl.CreateIndex(ctx, "tags_idx", map[string]string{"tags": "$keys"})
+//	err := tbl.CreateIndex(ctx, "tags_idx", map[string]string{"tags": "$keys"}, nil)
 //
 // Example - with ifNotExists:
 //
 //	err := tbl.CreateIndex(ctx, "rating_idx", "rating",
-//	    options.WithIndexIfNotExists(true),
-//	)
-func (t *Table) CreateIndex(ctx context.Context, name string, column any, opts ...options.IndexOption) error {
-	cmd := createIndexCommand(t, name, column, opts...)
+//	    options.CreateIndex().SetIfNotExists(true))
+func (t *Table) CreateIndex(ctx context.Context, name string, column any, opts *options.CreateIndexOptions) error {
+	cmd := createIndexCommand(t, name, column, opts)
 	// Note: Warnings are accessible via the WarningHandler option callback only.
 	_, _, err := cmd.Execute(ctx)
 	return err
 }
 
 // createIndexCommand builds the createIndex command for the table
-func createIndexCommand(t *Table, name string, column any, opts ...options.IndexOption) command {
-	indexOpts := options.NewCreateIndexOptions(opts...)
+func createIndexCommand(t *Table, name string, column any, opts *options.CreateIndexOptions) command {
 	payload := createIndexPayload{
 		Name: name,
 		Definition: createIndexDefinition{
@@ -556,24 +553,25 @@ func createIndexCommand(t *Table, name string, column any, opts ...options.Index
 		},
 	}
 
-	// Add definition options if any text index options are set
-	if indexOpts.Ascii != nil || indexOpts.Normalize != nil || indexOpts.CaseSensitive != nil {
-		payload.Definition.Options = &indexDefOpts{
-			Ascii:         indexOpts.Ascii,
-			Normalize:     indexOpts.Normalize,
-			CaseSensitive: indexOpts.CaseSensitive,
+	if opts != nil {
+		// Add definition options if any text index options are set
+		if opts.Ascii != nil || opts.Normalize != nil || opts.CaseSensitive != nil {
+			payload.Definition.Options = &indexDefOpts{
+				Ascii:         opts.Ascii,
+				Normalize:     opts.Normalize,
+				CaseSensitive: opts.CaseSensitive,
+			}
+		}
+
+		// Add command options if ifNotExists is set
+		if opts.IfNotExists {
+			payload.Options = &createIndexOpts{
+				IfNotExists: opts.IfNotExists,
+			}
 		}
 	}
 
-	// Add command options if ifNotExists is set
-	if indexOpts.IfNotExists {
-		payload.Options = &createIndexOpts{
-			IfNotExists: indexOpts.IfNotExists,
-		}
-	}
-
-	cmd := t.newCmd("createIndex", payload)
-	return cmd
+	return t.newCmd("createIndex", payload)
 }
 
 // CreateVectorIndex creates a vector index on a vector column in the table.
@@ -583,31 +581,26 @@ func createIndexCommand(t *Table, name string, column any, opts ...options.Index
 //
 // Example - basic vector index:
 //
-//	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding")
+//	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding", nil)
 //
 // Example - with metric and source model:
 //
 //	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding",
-//	    options.WithMetric(options.MetricDotProduct),
-//	    options.WithSourceModel("ada002"),
-//	)
+//	    options.CreateVectorIndex().SetMetric(options.MetricDotProduct).SetSourceModel("ada002"))
 //
 // Example - with ifNotExists:
 //
 //	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding",
-//	    options.WithVectorIndexIfNotExists(true),
-//	)
-func (t *Table) CreateVectorIndex(ctx context.Context, name string, column string, opts ...options.VectorIndexOption) error {
-	cmd := createVectorIndexCommand(t, name, column, opts...)
+//	    options.CreateVectorIndex().SetIfNotExists(true))
+func (t *Table) CreateVectorIndex(ctx context.Context, name string, column string, opts *options.CreateVectorIndexOptions) error {
+	cmd := createVectorIndexCommand(t, name, column, opts)
 	// Note: Warnings are accessible via the WarningHandler option callback only.
 	_, _, err := cmd.Execute(ctx)
 	return err
 }
 
 // createVectorIndexCommand builds the createVectorIndex command for the table
-func createVectorIndexCommand(t *Table, name string, column string, opts ...options.VectorIndexOption) command {
-	indexOpts := options.NewCreateVectorIndexOptions(opts...)
-
+func createVectorIndexCommand(t *Table, name string, column string, opts *options.CreateVectorIndexOptions) command {
 	payload := createVectorIndexPayload{
 		Name: name,
 		Definition: createVectorIndexDefinition{
@@ -615,18 +608,20 @@ func createVectorIndexCommand(t *Table, name string, column string, opts ...opti
 		},
 	}
 
-	// Add definition options if metric or sourceModel are set
-	if indexOpts.Metric != "" || indexOpts.SourceModel != "" {
-		payload.Definition.Options = &vectorIndexDefOpts{
-			Metric:      indexOpts.Metric,
-			SourceModel: indexOpts.SourceModel,
+	if opts != nil {
+		// Add definition options if metric or sourceModel are set
+		if opts.Metric != "" || opts.SourceModel != "" {
+			payload.Definition.Options = &vectorIndexDefOpts{
+				Metric:      opts.Metric,
+				SourceModel: opts.SourceModel,
+			}
 		}
-	}
 
-	// Add command options if ifNotExists is set
-	if indexOpts.IfNotExists {
-		payload.Options = &createIndexOpts{
-			IfNotExists: indexOpts.IfNotExists,
+		// Add command options if ifNotExists is set
+		if opts.IfNotExists {
+			payload.Options = &createIndexOpts{
+				IfNotExists: opts.IfNotExists,
+			}
 		}
 	}
 
@@ -709,25 +704,25 @@ type listIndexesResponse struct {
 
 // ListIndexes lists indexes on the table.
 //
-// By default, only index names are returned. Use WithExplain(true) to get
+// By default, only index names are returned. Use SetExplain(true) to get
 // full index metadata including column definitions and options.
 //
 // Example - list index names only:
 //
-//	indexes, err := tbl.ListIndexes(ctx)
+//	indexes, err := tbl.ListIndexes(ctx, nil)
 //	for _, idx := range indexes {
 //	    fmt.Println(idx.Name)
 //	}
 //
 // Example - list with full metadata:
 //
-//	indexes, err := tbl.ListIndexes(ctx, options.WithExplain(true))
+//	indexes, err := tbl.ListIndexes(ctx, options.ListIndexes().SetExplain(true))
 //	for _, idx := range indexes {
 //	    fmt.Printf("Index %s on column %s (type: %s)\n",
 //	        idx.Name, idx.Definition.Column, idx.IndexType)
 //	}
-func (t *Table) ListIndexes(ctx context.Context, opts ...options.ListIndexesOption) ([]IndexDescriptor, error) {
-	cmd := listIndexesCommand(t, opts...)
+func (t *Table) ListIndexes(ctx context.Context, opts *options.ListIndexesOptions) ([]IndexDescriptor, error) {
+	cmd := listIndexesCommand(t, opts)
 	b, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return nil, err
@@ -742,15 +737,13 @@ func (t *Table) ListIndexes(ctx context.Context, opts ...options.ListIndexesOpti
 }
 
 // listIndexesCommand builds the listIndexes command for the table
-func listIndexesCommand(t *Table, opts ...options.ListIndexesOption) command {
-	listOpts := options.NewListIndexesOptions(opts...)
-
+func listIndexesCommand(t *Table, opts *options.ListIndexesOptions) command {
 	payload := listIndexesPayload{}
 
 	// Add options if explain is set
-	if listOpts.Explain {
+	if opts != nil && opts.Explain {
 		payload.Options = &listIndexesOpts{
-			Explain: listOpts.Explain,
+			Explain: opts.Explain,
 		}
 	}
 

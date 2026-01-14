@@ -233,7 +233,7 @@ func TableFind(e *harness.TestEnv) error {
 	}
 
 	// Next, create index and verify warnings go away
-	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out", options.WithIndexIfNotExists(true)); err != nil {
+	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out", nil); err != nil {
 		return err
 	}
 
@@ -256,7 +256,7 @@ func TableFind(e *harness.TestEnv) error {
 	}
 
 	// Let's double-create that index and make sure it doesn't error out
-	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out", options.WithIndexIfNotExists(true)); err != nil {
+	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out", options.CreateIndex().SetIfNotExists(true)); err != nil {
 		return err
 	}
 
@@ -376,12 +376,12 @@ func TableListIndexes(e *harness.TestEnv) error {
 
 	// Create an index for testing
 	indexName := "rating_idx"
-	if err := tbl.CreateIndex(ctx, indexName, "rating", options.WithIndexIfNotExists(true)); err != nil {
+	if err := tbl.CreateIndex(ctx, indexName, "rating", options.CreateIndex().SetIfNotExists(true)); err != nil {
 		return fmt.Errorf("failed to create index: %w", err)
 	}
 
 	// Test listing indexes without explain (names only)
-	indexes, err := tbl.ListIndexes(ctx)
+	indexes, err := tbl.ListIndexes(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to list indexes: %w", err)
 	}
@@ -404,7 +404,7 @@ func TableListIndexes(e *harness.TestEnv) error {
 	}
 
 	// Test listing indexes with explain (full metadata)
-	indexesExplain, err := tbl.ListIndexes(ctx, options.WithExplain(true))
+	indexesExplain, err := tbl.ListIndexes(ctx, options.ListIndexes().SetExplain(true))
 	if err != nil {
 		return fmt.Errorf("failed to list indexes with explain: %w", err)
 	}
