@@ -62,3 +62,18 @@ func (c *DataAPIClient) Database(endpoint string, opts ...options.APIOption) *Db
 		options:  options.NewAPIOptions(opts...),
 	}
 }
+
+// Admin returns an Admin handle for DevOps API operations.
+//
+// Options set on the client are inherited by the Admin.
+//
+// Example:
+//
+//	admin := client.Admin()
+//	regions, err := admin.FindAvailableRegions(ctx)
+func (c *DataAPIClient) Admin(opts ...options.APIOption) *Admin {
+	return &Admin{
+		client:  c,
+		options: options.NewAPIOptions(opts...),
+	}
+}
