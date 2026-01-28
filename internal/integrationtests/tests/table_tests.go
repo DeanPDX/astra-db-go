@@ -233,7 +233,7 @@ func TableFind(e *harness.TestEnv) error {
 	}
 
 	// Next, create index and verify warnings go away
-	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out", nil); err != nil {
+	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out"); err != nil {
 		return err
 	}
 
@@ -381,7 +381,7 @@ func TableListIndexes(e *harness.TestEnv) error {
 	}
 
 	// Test listing indexes without explain (names only)
-	indexes, err := tbl.ListIndexes(ctx, nil)
+	indexes, err := tbl.ListIndexes(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list indexes: %w", err)
 	}

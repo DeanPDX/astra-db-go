@@ -721,7 +721,10 @@ const exampleIndexPayloadJSON = `{
 // TestCreateIndexCommandMarshal verifies that the resulting command from createIndexCommand matches
 // the payload in the docs.
 func TestCreateIndexCommandMarshal(t *testing.T) {
-	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetIfNotExists(true))
+	cmd, err := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetIfNotExists(true))
+	if err != nil {
+		t.Fatalf("createIndexCommand: %v", err)
+	}
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -733,7 +736,10 @@ func TestCreateIndexCommandMarshal(t *testing.T) {
 }
 
 func TestCreateIndexCommandURL(t *testing.T) {
-	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetIfNotExists(true))
+	cmd, err := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetIfNotExists(true))
+	if err != nil {
+		t.Fatalf("createIndexCommand: %v", err)
+	}
 	postURL, err := cmd.url()
 	if err != nil {
 		t.Fatalf("cmd.url: %v", err)
@@ -762,7 +768,10 @@ const exampleIndexASCIIPayloadJSON = `{
 // TestCreateIndexASCIICommandMarshal verifies that the resulting command from createIndexCommand
 // with the ascii option matches the payload in the docs.
 func TestCreateIndexASCIICommandMarshal(t *testing.T) {
-	cmd := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetAscii(true))
+	cmd, err := createIndexCommand(getTestTable(t), "example_index_name", "example_column", options.CreateIndex().SetAscii(true))
+	if err != nil {
+		t.Fatalf("createIndexCommand: %v", err)
+	}
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -789,7 +798,10 @@ const exampleIndexMapKeysPayloadJSON = `{
 // TestCreateIndexMapKeysCommandMarshal verifies that the resulting command from createIndexCommand
 // with a map column keys index matches the payload in the docs.
 func TestCreateIndexMapKeysCommandMarshal(t *testing.T) {
-	cmd := createIndexCommand(getTestTable(t), "example_index_name", map[string]string{"example_map_column": "$keys"}, nil)
+	cmd, err := createIndexCommand(getTestTable(t), "example_index_name", map[string]string{"example_map_column": "$keys"})
+	if err != nil {
+		t.Fatalf("createIndexCommand: %v", err)
+	}
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -814,7 +826,10 @@ const exampleVectorIndexDefaultPayloadJSON = `{
 // TestCreateVectorIndexDefaultCommandMarshal verifies that the resulting command from createVectorIndexCommand
 // with default options matches the payload in the docs.
 func TestCreateVectorIndexDefaultCommandMarshal(t *testing.T) {
-	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column", nil)
+	cmd, err := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column")
+	if err != nil {
+		t.Fatalf("createVectorIndexCommand: %v", err)
+	}
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -843,8 +858,11 @@ const exampleVectorIndexModelMetricPayloadJSON = `{
 // TestCreateVectorIndexModelMetricCommandMarshal verifies that the resulting command from createVectorIndexCommand
 // with custom metric and sourceModel matches the payload in the docs.
 func TestCreateVectorIndexModelMetricCommandMarshal(t *testing.T) {
-	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column",
+	cmd, err := createVectorIndexCommand(getTestTable(t), "example_index_name", "example_vector_column",
 		options.CreateVectorIndex().SetMetric(options.MetricDotProduct).SetSourceModel("ada002"))
+	if err != nil {
+		t.Fatalf("createVectorIndexCommand: %v", err)
+	}
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -872,8 +890,11 @@ const exampleVectorIndexIfNotExistsPayloadJSON = `{
 // TestCreateVectorIndexIfNotExistsCommandMarshal verifies that the resulting command from createVectorIndexCommand
 // with ifNotExists option matches the payload in the docs.
 func TestCreateVectorIndexIfNotExistsCommandMarshal(t *testing.T) {
-	cmd := createVectorIndexCommand(getTestTable(t), "example_index_name", "summary_genres_vector",
+	cmd, err := createVectorIndexCommand(getTestTable(t), "example_index_name", "summary_genres_vector",
 		options.CreateVectorIndex().SetIfNotExists(true))
+	if err != nil {
+		t.Fatalf("createVectorIndexCommand: %v", err)
+	}
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -940,7 +961,10 @@ const exampleListIndexesNamesOnlyPayloadJSON = `{
 // TestListIndexesNamesOnlyCommandMarshal verifies that the resulting command from listIndexesCommand
 // with default options (no explain) matches the payload in the docs.
 func TestListIndexesNamesOnlyCommandMarshal(t *testing.T) {
-	cmd := listIndexesCommand(getTestTable(t), nil)
+	cmd, err := listIndexesCommand(getTestTable(t))
+	if err != nil {
+		t.Fatalf("listIndexesCommand: %v", err)
+	}
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -964,7 +988,10 @@ const exampleListIndexesExplainPayloadJSON = `{
 // TestListIndexesExplainCommandMarshal verifies that the resulting command from listIndexesCommand
 // with explain=true matches the payload in the docs.
 func TestListIndexesExplainCommandMarshal(t *testing.T) {
-	cmd := listIndexesCommand(getTestTable(t), options.ListIndexes().SetExplain(true))
+	cmd, err := listIndexesCommand(getTestTable(t), options.ListIndexes().SetExplain(true))
+	if err != nil {
+		t.Fatalf("listIndexesCommand: %v", err)
+	}
 	// MarshalIndent and match the indentation of the example JSON
 	cmdBytes, err := json.MarshalIndent(cmd, "", "  ")
 	if err != nil {
@@ -978,7 +1005,10 @@ func TestListIndexesExplainCommandMarshal(t *testing.T) {
 // TestListIndexesCommandURL verifies that the listIndexesCommand URL
 // is correct (should hit the table endpoint).
 func TestListIndexesCommandURL(t *testing.T) {
-	cmd := listIndexesCommand(getTestTable(t), nil)
+	cmd, err := listIndexesCommand(getTestTable(t))
+	if err != nil {
+		t.Fatalf("listIndexesCommand: %v", err)
+	}
 	postURL, err := cmd.url()
 	if err != nil {
 		t.Fatalf("cmd.url: %v", err)
@@ -1094,4 +1124,93 @@ func intPtr(i int) *int {
 
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+// TestCreateIndexOptionsVarargs verifies that multiple options can be passed and merged.
+func TestCreateIndexOptionsVarargs(t *testing.T) {
+	t.Run("no options", func(t *testing.T) {
+		cmd, err := createIndexCommand(getTestTable(t), "test_idx", "test_col")
+		if err != nil {
+			t.Fatalf("createIndexCommand: %v", err)
+		}
+		cmdBytes, _ := json.Marshal(cmd)
+		// Should not have "options" key when no options provided
+		if string(cmdBytes) != `{"createIndex":{"name":"test_idx","definition":{"column":"test_col"}}}` {
+			t.Errorf("unexpected JSON: %s", string(cmdBytes))
+		}
+	})
+
+	t.Run("single builder option", func(t *testing.T) {
+		// Test with chaining a single options builder
+		opts := options.CreateIndex().SetIfNotExists(true).SetCaseSensitive(true)
+		cmd, err := createIndexCommand(getTestTable(t), "test_idx", "test_col", opts)
+		if err != nil {
+			t.Fatalf("createIndexCommand: %v", err)
+		}
+		cmdBytes, _ := json.Marshal(cmd)
+		if string(cmdBytes) != `{"createIndex":{"name":"test_idx","definition":{"column":"test_col","options":{"caseSensitive":true}},"options":{"ifNotExists":true}}}` {
+			t.Errorf("unexpected JSON: %s", string(cmdBytes))
+		}
+	})
+
+	t.Run("multiple builder options merged", func(t *testing.T) {
+		// Pass multiple options - they should be merged with later options overriding earlier
+		cmd, err := createIndexCommand(getTestTable(t), "test_idx", "test_col",
+			options.CreateIndex().SetAscii(false), // Set false and make sure later "true" overrides
+			options.CreateIndex().SetIfNotExists(true),
+			options.CreateIndex().SetCaseSensitive(false),
+			options.CreateIndex().SetAscii(true),
+		)
+		if err != nil {
+			t.Fatalf("createIndexCommand: %v", err)
+		}
+		cmdBytes, err := json.Marshal(cmd)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		expected := `{"createIndex":{"name":"test_idx","definition":{"column":"test_col","options":{"ascii":true,"caseSensitive":false}},"options":{"ifNotExists":true}}}`
+		if string(cmdBytes) != expected {
+			t.Errorf("expected JSON:\n%s\nGot:\n%s", expected, string(cmdBytes))
+		}
+	})
+
+	t.Run("later options override earlier", func(t *testing.T) {
+		// Pass conflicting options - later should win
+		cmd, err := createIndexCommand(getTestTable(t), "test_idx", "test_col",
+			options.CreateIndex().SetAscii(true),
+			options.CreateIndex().SetAscii(false)) // Override to false
+		if err != nil {
+			t.Fatalf("createIndexCommand: %v", err)
+		}
+		cmdBytes, err := json.Marshal(cmd)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		expected := `{"createIndex":{"name":"test_idx","definition":{"column":"test_col","options":{"ascii":false}}}}`
+		if string(cmdBytes) != expected {
+			t.Errorf("expected JSON:\n%s\nGot:\n%s", expected, string(cmdBytes))
+		}
+	})
+
+	t.Run("raw struct option", func(t *testing.T) {
+		// Pass raw struct directly (not builder) - this should also work
+		rawOpts := &options.CreateIndexOptions{
+			IfNotExists:   boolPtr(true),
+			Ascii:         boolPtr(true),
+			Normalize:     boolPtr(false), // Set to false to throw a curveball.
+			CaseSensitive: boolPtr(true),
+		}
+		cmd, err := createIndexCommand(getTestTable(t), "test_idx", "test_col", rawOpts)
+		if err != nil {
+			t.Fatalf("createIndexCommand: %v", err)
+		}
+		cmdBytes, err := json.Marshal(cmd)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		expected := `{"createIndex":{"name":"test_idx","definition":{"column":"test_col","options":{"ascii":true,"normalize":false,"caseSensitive":true}},"options":{"ifNotExists":true}}}`
+		if string(cmdBytes) != expected {
+			t.Errorf("expected JSON:\n%s\nGot:\n%s", expected, string(cmdBytes))
+		}
+	})
 }
