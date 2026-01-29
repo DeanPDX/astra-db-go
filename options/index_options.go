@@ -42,19 +42,23 @@ type CreateIndexOptions struct {
 
 // List implements Lister[CreateIndexOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Lister[CreateIndexOptions].
-func (o *CreateIndexOptions) List() []func(*CreateIndexOptions) error {
-	return []func(*CreateIndexOptions) error{
-		func(target *CreateIndexOptions) error {
+func (o *CreateIndexOptions) List() []func(*CreateIndexOptions) {
+	return []func(*CreateIndexOptions){
+		func(target *CreateIndexOptions) {
 			copyNonNilFields(o, target)
-			return nil
 		},
 	}
+}
+
+// Validate implements Validator for CreateIndexOptions.
+func (o CreateIndexOptions) Validate() error {
+	return nil
 }
 
 // CreateIndexOptionsBuilder is a builder for CreateIndexOptions that implements
 // Lister[CreateIndexOptions] following the MongoDB Go driver pattern.
 type CreateIndexOptionsBuilder struct {
-	Opts []func(*CreateIndexOptions) error
+	Opts []func(*CreateIndexOptions)
 }
 
 // CreateIndex creates a new CreateIndexOptionsBuilder.
@@ -63,16 +67,15 @@ func CreateIndex() *CreateIndexOptionsBuilder {
 }
 
 // List implements Lister[CreateIndexOptions].
-func (b *CreateIndexOptionsBuilder) List() []func(*CreateIndexOptions) error {
+func (b *CreateIndexOptionsBuilder) List() []func(*CreateIndexOptions) {
 	return b.Opts
 }
 
 // SetIfNotExists sets the ifNotExists option for index creation.
 // When true, the command will silently succeed even if an index with the given name already exists.
 func (b *CreateIndexOptionsBuilder) SetIfNotExists(v bool) *CreateIndexOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateIndexOptions) error {
+	b.Opts = append(b.Opts, func(o *CreateIndexOptions) {
 		o.IfNotExists = &v
-		return nil
 	})
 	return b
 }
@@ -80,9 +83,8 @@ func (b *CreateIndexOptionsBuilder) SetIfNotExists(v bool) *CreateIndexOptionsBu
 // SetAscii sets the ascii option for text index creation.
 // When true, converts non-ASCII characters to US-ASCII before indexing.
 func (b *CreateIndexOptionsBuilder) SetAscii(v bool) *CreateIndexOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateIndexOptions) error {
+	b.Opts = append(b.Opts, func(o *CreateIndexOptions) {
 		o.Ascii = &v
-		return nil
 	})
 	return b
 }
@@ -90,9 +92,8 @@ func (b *CreateIndexOptionsBuilder) SetAscii(v bool) *CreateIndexOptionsBuilder 
 // SetNormalize sets the normalize option for text index creation.
 // When true, applies Unicode character normalization before indexing.
 func (b *CreateIndexOptionsBuilder) SetNormalize(v bool) *CreateIndexOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateIndexOptions) error {
+	b.Opts = append(b.Opts, func(o *CreateIndexOptions) {
 		o.Normalize = &v
-		return nil
 	})
 	return b
 }
@@ -100,9 +101,8 @@ func (b *CreateIndexOptionsBuilder) SetNormalize(v bool) *CreateIndexOptionsBuil
 // SetCaseSensitive sets the caseSensitive option for text index creation.
 // When true (default), enforces case-sensitive matching.
 func (b *CreateIndexOptionsBuilder) SetCaseSensitive(v bool) *CreateIndexOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateIndexOptions) error {
+	b.Opts = append(b.Opts, func(o *CreateIndexOptions) {
 		o.CaseSensitive = &v
-		return nil
 	})
 	return b
 }
@@ -125,19 +125,23 @@ type CreateVectorIndexOptions struct {
 
 // List implements Lister[CreateVectorIndexOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Lister[CreateVectorIndexOptions].
-func (o *CreateVectorIndexOptions) List() []func(*CreateVectorIndexOptions) error {
-	return []func(*CreateVectorIndexOptions) error{
-		func(target *CreateVectorIndexOptions) error {
+func (o *CreateVectorIndexOptions) List() []func(*CreateVectorIndexOptions) {
+	return []func(*CreateVectorIndexOptions){
+		func(target *CreateVectorIndexOptions) {
 			copyNonNilFields(o, target)
-			return nil
 		},
 	}
+}
+
+// Validate implements Validator for CreateVectorIndexOptions.
+func (o CreateVectorIndexOptions) Validate() error {
+	return nil
 }
 
 // CreateVectorIndexOptionsBuilder is a builder for CreateVectorIndexOptions that implements
 // Lister[CreateVectorIndexOptions] following the MongoDB Go driver pattern.
 type CreateVectorIndexOptionsBuilder struct {
-	Opts []func(*CreateVectorIndexOptions) error
+	Opts []func(*CreateVectorIndexOptions)
 }
 
 // CreateVectorIndex creates a new CreateVectorIndexOptionsBuilder.
@@ -146,16 +150,15 @@ func CreateVectorIndex() *CreateVectorIndexOptionsBuilder {
 }
 
 // List implements Lister[CreateVectorIndexOptions].
-func (b *CreateVectorIndexOptionsBuilder) List() []func(*CreateVectorIndexOptions) error {
+func (b *CreateVectorIndexOptionsBuilder) List() []func(*CreateVectorIndexOptions) {
 	return b.Opts
 }
 
 // SetIfNotExists sets the ifNotExists option for vector index creation.
 // When true, the command will silently succeed even if an index with the given name already exists.
 func (b *CreateVectorIndexOptionsBuilder) SetIfNotExists(v bool) *CreateVectorIndexOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateVectorIndexOptions) error {
+	b.Opts = append(b.Opts, func(o *CreateVectorIndexOptions) {
 		o.IfNotExists = &v
-		return nil
 	})
 	return b
 }
@@ -163,9 +166,8 @@ func (b *CreateVectorIndexOptionsBuilder) SetIfNotExists(v bool) *CreateVectorIn
 // SetMetric sets the similarity metric for vector search.
 // Valid values: MetricCosine, MetricDotProduct, MetricEuclidean
 func (b *CreateVectorIndexOptionsBuilder) SetMetric(metric string) *CreateVectorIndexOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateVectorIndexOptions) error {
+	b.Opts = append(b.Opts, func(o *CreateVectorIndexOptions) {
 		o.Metric = &metric
-		return nil
 	})
 	return b
 }
@@ -173,9 +175,8 @@ func (b *CreateVectorIndexOptionsBuilder) SetMetric(metric string) *CreateVector
 // SetSourceModel sets the source model for vector index optimization.
 // This enables provider-specific optimizations for the embedding model used.
 func (b *CreateVectorIndexOptionsBuilder) SetSourceModel(model string) *CreateVectorIndexOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateVectorIndexOptions) error {
+	b.Opts = append(b.Opts, func(o *CreateVectorIndexOptions) {
 		o.SourceModel = &model
-		return nil
 	})
 	return b
 }
@@ -189,19 +190,23 @@ type ListIndexesOptions struct {
 
 // List implements Lister[ListIndexesOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Lister[ListIndexesOptions].
-func (o *ListIndexesOptions) List() []func(*ListIndexesOptions) error {
-	return []func(*ListIndexesOptions) error{
-		func(target *ListIndexesOptions) error {
+func (o *ListIndexesOptions) List() []func(*ListIndexesOptions) {
+	return []func(*ListIndexesOptions){
+		func(target *ListIndexesOptions) {
 			copyNonNilFields(o, target)
-			return nil
 		},
 	}
+}
+
+// Validate implements Validator for ListIndexesOptions.
+func (o ListIndexesOptions) Validate() error {
+	return nil
 }
 
 // ListIndexesOptionsBuilder is a builder for ListIndexesOptions that implements
 // Lister[ListIndexesOptions] following the MongoDB Go driver pattern.
 type ListIndexesOptionsBuilder struct {
-	Opts []func(*ListIndexesOptions) error
+	Opts []func(*ListIndexesOptions)
 }
 
 // ListIndexes creates a new ListIndexesOptionsBuilder.
@@ -210,16 +215,15 @@ func ListIndexes() *ListIndexesOptionsBuilder {
 }
 
 // List implements Lister[ListIndexesOptions].
-func (b *ListIndexesOptionsBuilder) List() []func(*ListIndexesOptions) error {
+func (b *ListIndexesOptionsBuilder) List() []func(*ListIndexesOptions) {
 	return b.Opts
 }
 
 // SetExplain sets the explain option for listing indexes.
 // When true, returns full index metadata. When false, returns only index names.
 func (b *ListIndexesOptionsBuilder) SetExplain(v bool) *ListIndexesOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *ListIndexesOptions) error {
+	b.Opts = append(b.Opts, func(o *ListIndexesOptions) {
 		o.Explain = &v
-		return nil
 	})
 	return b
 }

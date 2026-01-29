@@ -16,29 +16,31 @@ package options
 
 import "reflect"
 
+type Validator interface {
+	Validate() error
+}
+
 // Lister is an interface that wraps a List method to return a
 // slice of option setters. This follows the MongoDB Go driver pattern
 // for composable options.
-type Lister[T any] interface {
-	List() []func(*T) error
+type Lister[T Validator] interface {
+	List() []func(*T)
 }
 
 // MergeOptions merges multiple Lister options into a single options struct.
 // It applies each option's setters sequentially, with later options
 // overriding earlier ones for the same fields.
-func MergeOptions[T any](opts ...Lister[T]) (*T, error) {
+func MergeOptions[T Validator](opts ...Lister[T]) *T {
 	result := new(T)
 	for _, opt := range opts {
 		if opt == nil {
 			continue
 		}
 		for _, setter := range opt.List() {
-			if err := setter(result); err != nil {
-				return nil, err
-			}
+			setter(result)
 		}
 	}
-	return result, nil
+	return result
 }
 
 // copyNonNilFields copies all non-nil pointer fields from src to dst.
