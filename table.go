@@ -562,8 +562,8 @@ func createIndexCommand(t *Table, name string, column any, opts ...options.Liste
 		},
 	}
 
-	merged, err := options.MergeOptions(opts...)
-	if err != nil {
+	merged := options.MergeOptions(opts...)
+	if err := merged.Validate(); err != nil {
 		return command{}, err
 	}
 
@@ -625,8 +625,8 @@ func createVectorIndexCommand(t *Table, name string, column string, opts ...opti
 		},
 	}
 
-	merged, err := options.MergeOptions(opts...)
-	if err != nil {
+	merged := options.MergeOptions(opts...)
+	if err := merged.Validate(); err != nil {
 		return command{}, err
 	}
 
@@ -769,8 +769,8 @@ func (t *Table) ListIndexes(ctx context.Context, opts ...options.Lister[options.
 func listIndexesCommand(t *Table, opts ...options.Lister[options.ListIndexesOptions]) (command, error) {
 	payload := listIndexesPayload{}
 
-	merged, err := options.MergeOptions(opts...)
-	if err != nil {
+	merged := options.MergeOptions(opts...)
+	if err := merged.Validate(); err != nil {
 		return command{}, err
 	}
 
