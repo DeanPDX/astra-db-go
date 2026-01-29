@@ -553,8 +553,68 @@ func (t *Table) CreateIndex(ctx context.Context, name string, column any, opts .
 	return err
 }
 
+// Index names for tables must follow these rules:
+//
+//   - Must be unique within the keyspace (we can't validate this here and API will have to return errors).
+//   - Can contain letters, numbers, and underscores.
+//   - Must have a length of 1 to 100 characters.
+//
+// TODO: this might belong somewhere else.
+func validateIndexName(idxName string) error {
+	// Validate length
+	indexLen := len(idxName)
+	switch {
+	case indexLen == 0:
+		return fmt.Errorf("index name cannot be empty")
+	case indexLen > 100:
+		return fmt.Errorf("index name length must be between 1 and 100 characters")
+	}
+	// Validate characters.
+	for _, r := range idxName {
+		if (r >= 'a' && r <= 'z') || // is a lowercase letter
+			(r >= 'A' && r <= 'Z') || // is an uppercase letter
+			(r >= '0' && r <= '9') || // is a number
+			r == '_' { // is an underscore
+			continue
+		}
+		return fmt.Errorf("index name can only contain letters, numbers, and underscores")
+	}
+	// All good.
+	return nil
+}
+
+// Column can be a string or a map for $keys/$values. Examples:
+//
+//   - "column_name"
+//   - map[string]string{"example_map_column": "$keys"}
+func validateIndexColumn(column any) error {
+	// Validate type
+	switch column := column.(type) {
+	case string:
+		// OK. But for string, make sure it's not empty
+		if column == "" {
+			return fmt.Errorf("index column name cannot be empty")
+		}
+	case map[string]string:
+		// OK. But make sure not empty map.
+		if len(column) == 0 {
+			return fmt.Errorf("index column map cannot be empty")
+		}
+	default:
+		return fmt.Errorf("invalid index column type: %T", column)
+	}
+	// All good.
+	return nil
+}
+
 // createIndexCommand builds the createIndex command for the table
 func createIndexCommand(t *Table, name string, column any, opts ...options.Lister[options.CreateIndexOptions]) (command, error) {
+	if err := validateIndexName(name); err != nil {
+		return command{}, err
+	}
+	if err := validateIndexColumn(column); err != nil {
+		return command{}, err
+	}
 	payload := createIndexPayload{
 		Name: name,
 		Definition: createIndexDefinition{
@@ -562,8 +622,8 @@ func createIndexCommand(t *Table, name string, column any, opts ...options.Liste
 		},
 	}
 
-	merged := options.MergeOptions(opts...)
-	if err := merged.Validate(); err != nil {
+	merged, err := options.MergeOptions(opts...)
+	if err != nil {
 		return command{}, err
 	}
 
@@ -618,6 +678,12 @@ func (t *Table) CreateVectorIndex(ctx context.Context, name string, column strin
 
 // createVectorIndexCommand builds the createVectorIndex command for the table
 func createVectorIndexCommand(t *Table, name string, column string, opts ...options.Lister[options.CreateVectorIndexOptions]) (command, error) {
+	if err := validateIndexName(name); err != nil {
+		return command{}, err
+	}
+	if err := validateIndexColumn(column); err != nil {
+		return command{}, err
+	}
 	payload := createVectorIndexPayload{
 		Name: name,
 		Definition: createVectorIndexDefinition{
@@ -625,8 +691,8 @@ func createVectorIndexCommand(t *Table, name string, column string, opts ...opti
 		},
 	}
 
-	merged := options.MergeOptions(opts...)
-	if err := merged.Validate(); err != nil {
+	merged, err := options.MergeOptions(opts...)
+	if err != nil {
 		return command{}, err
 	}
 
@@ -635,7 +701,7 @@ func createVectorIndexCommand(t *Table, name string, column string, opts ...opti
 		if merged.Metric != nil || merged.SourceModel != nil {
 			defOpts := &vectorIndexDefOpts{}
 			if merged.Metric != nil {
-				defOpts.Metric = *merged.Metric
+				defOpts.Metric = string(*merged.Metric)
 			}
 			if merged.SourceModel != nil {
 				defOpts.SourceModel = *merged.SourceModel
@@ -769,8 +835,8 @@ func (t *Table) ListIndexes(ctx context.Context, opts ...options.Lister[options.
 func listIndexesCommand(t *Table, opts ...options.Lister[options.ListIndexesOptions]) (command, error) {
 	payload := listIndexesPayload{}
 
-	merged := options.MergeOptions(opts...)
-	if err := merged.Validate(); err != nil {
+	merged, err := options.MergeOptions(opts...)
+	if err != nil {
 		return command{}, err
 	}
 
