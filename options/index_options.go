@@ -14,11 +14,14 @@
 
 package options
 
+// VectorMetric represents the similarity measurement for vector search.
+type VectorMetric string
+
 // Metric constants for vector index similarity measurement
 const (
-	MetricCosine     = "cosine"
-	MetricDotProduct = "dot_product"
-	MetricEuclidean  = "euclidean"
+	MetricCosine     VectorMetric = "cosine"
+	MetricDotProduct VectorMetric = "dot_product"
+	MetricEuclidean  VectorMetric = "euclidean"
 )
 
 // CreateIndexOptions represents options for creating a regular index.
@@ -115,7 +118,7 @@ type CreateVectorIndexOptions struct {
 
 	// Metric is the similarity measurement for vector search.
 	// Valid values: "cosine" (default), "dot_product", "euclidean"
-	Metric *string
+	Metric *VectorMetric
 
 	// SourceModel is the embedding generation model, enabling optimizations.
 	// Valid values: "ada002", "bert", "cohere-v3", "gecko", "nv-qa-4",
@@ -164,17 +167,24 @@ func (b *CreateVectorIndexOptionsBuilder) SetIfNotExists(v bool) *CreateVectorIn
 }
 
 // SetMetric sets the similarity metric for vector search.
-// Valid values: MetricCosine, MetricDotProduct, MetricEuclidean
-func (b *CreateVectorIndexOptionsBuilder) SetMetric(metric string) *CreateVectorIndexOptionsBuilder {
+//
+// Can be one of: [MetricCosine] (default), [MetricDotProduct], [MetricEuclidean].
+func (b *CreateVectorIndexOptionsBuilder) SetMetric(v VectorMetric) *CreateVectorIndexOptionsBuilder {
 	b.Opts = append(b.Opts, func(o *CreateVectorIndexOptions) {
-		o.Metric = &metric
+		o.Metric = &v
 	})
 	return b
 }
 
 // SetSourceModel sets the source model for vector index optimization.
 // This enables provider-specific optimizations for the embedding model used.
+//
+// Can be one of:
+// ada002, bert, cohere-v3, gecko, nv-qa-4, openai-v3-large, openai-v3-small, other (default)
 func (b *CreateVectorIndexOptionsBuilder) SetSourceModel(model string) *CreateVectorIndexOptionsBuilder {
+	// NOTE: following the other libraries' patterns, we are using a enum-like option for Metric, but
+	// this is a string. For reference:
+	// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-index-methods/create-vector-index.html#parameters
 	b.Opts = append(b.Opts, func(o *CreateVectorIndexOptions) {
 		o.SourceModel = &model
 	})

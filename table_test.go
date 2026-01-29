@@ -1214,3 +1214,40 @@ func TestCreateIndexOptionsVarargs(t *testing.T) {
 		}
 	})
 }
+
+func TestCreateIndedxOptionsValidation(t *testing.T) {
+	t.Run("no index name", func(t *testing.T) {
+		_, err := createIndexCommand(getTestTable(t), "", "some_column")
+		if err == nil {
+			t.Fatal("expected error for missing index name")
+		}
+	})
+
+	t.Run("no column name", func(t *testing.T) {
+		_, err := createIndexCommand(getTestTable(t), "some_index", "")
+		if err == nil {
+			t.Fatal("expected error for missing column name")
+		}
+	})
+
+	t.Run("empty column name map", func(t *testing.T) {
+		_, err := createIndexCommand(getTestTable(t), "some_index", map[string]string{})
+		if err == nil {
+			t.Fatal("expected error for empty column name map")
+		}
+	})
+
+	t.Run("valid column name map", func(t *testing.T) {
+		_, err := createIndexCommand(getTestTable(t), "some_index", map[string]string{"example_map_column": "$values"})
+		if err != nil {
+			t.Fatal("expected no error for valid column name map")
+		}
+	})
+
+	t.Run("valid column name", func(t *testing.T) {
+		_, err := createIndexCommand(getTestTable(t), "some_index", "example_column")
+		if err != nil {
+			t.Fatal("expected no error for valid column name")
+		}
+	})
+}

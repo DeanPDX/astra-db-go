@@ -28,9 +28,9 @@ type Lister[T Validator] interface {
 }
 
 // MergeOptions merges multiple Lister options into a single options struct.
-// It applies each option's setters sequentially, with later options
-// overriding earlier ones for the same fields.
-func MergeOptions[T Validator](opts ...Lister[T]) *T {
+// It applies each option's setters sequentially, with later options overriding
+// earlier ones for the same fields. Calls `Validate` on the result and returns errors.
+func MergeOptions[T Validator](opts ...Lister[T]) (*T, error) {
 	result := new(T)
 	for _, opt := range opts {
 		if opt == nil {
@@ -40,7 +40,8 @@ func MergeOptions[T Validator](opts ...Lister[T]) *T {
 			setter(result)
 		}
 	}
-	return result
+	err := (*result).Validate()
+	return result, err
 }
 
 // copyNonNilFields copies all non-nil pointer fields from src to dst.
