@@ -553,31 +553,12 @@ func (t *Table) CreateIndex(ctx context.Context, name string, column any, opts .
 	return err
 }
 
-// Index names for tables must follow these rules:
-//
-//   - Must be unique within the keyspace (we can't validate this here and API will have to return errors).
-//   - Can contain letters, numbers, and underscores.
-//   - Must have a length of 1 to 100 characters.
-//
-// TODO: this might belong somewhere else.
+// Validate index name.
 func validateIndexName(idxName string) error {
-	// Validate length
-	indexLen := len(idxName)
-	switch {
-	case indexLen == 0:
+	// Right now we are only checking for empty names. Rationale:
+	// https://github.com/datastax/astra-db-go/pull/7#discussion_r2743808855
+	if idxName == "" {
 		return fmt.Errorf("index name cannot be empty")
-	case indexLen > 100:
-		return fmt.Errorf("index name length must be between 1 and 100 characters")
-	}
-	// Validate characters.
-	for _, r := range idxName {
-		if (r >= 'a' && r <= 'z') || // is a lowercase letter
-			(r >= 'A' && r <= 'Z') || // is an uppercase letter
-			(r >= '0' && r <= '9') || // is a number
-			r == '_' { // is an underscore
-			continue
-		}
-		return fmt.Errorf("index name can only contain letters, numbers, and underscores")
 	}
 	// All good.
 	return nil
