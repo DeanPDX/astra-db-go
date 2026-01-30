@@ -20,17 +20,27 @@ type Validator interface {
 	Validate() error
 }
 
-// Lister is an interface that wraps a List method to return a
+// Builder is an interface that wraps a List method to return a
 // slice of option setters. This follows the MongoDB Go driver pattern
 // for composable options.
-type Lister[T Validator] interface {
+type Builder[T Validator] interface {
 	List() []func(*T)
 }
 
-// MergeOptions merges multiple Lister options into a single options struct.
+// NoopBuilder returns a [Builder] implementation that just copies
+// from the source to the target.
+func NoopBuilder[T any](src *T) []func(*T) {
+	return []func(*T){
+		func(target *T) {
+			copyNonNilFields(src, target)
+		},
+	}
+}
+
+// MergeOptions merges multiple Builder options into a single options struct.
 // It applies each option's setters sequentially, with later options overriding
 // earlier ones for the same fields. Calls `Validate` on the result and returns errors.
-func MergeOptions[T Validator](opts ...Lister[T]) (*T, error) {
+func MergeOptions[T Validator](opts ...Builder[T]) (*T, error) {
 	result := new(T)
 	for _, opt := range opts {
 		if opt == nil {
@@ -45,7 +55,7 @@ func MergeOptions[T Validator](opts ...Lister[T]) (*T, error) {
 }
 
 // copyNonNilFields copies all non-nil pointer fields from src to dst.
-// Used by options structs to implement Lister without manual field enumeration.
+// Used by options structs to implement Builder without manual field enumeration.
 func copyNonNilFields[T any](src, dst *T) {
 	srcVal := reflect.ValueOf(src).Elem()
 	dstVal := reflect.ValueOf(dst).Elem()
