@@ -543,7 +543,7 @@ type vectorIndexDefOpts struct {
 //	err := tbl.CreateIndex(ctx, "title_idx", "title",
 //	    options.CreateIndex().SetAscii(true),
 //	    options.CreateIndex().SetIfNotExists(true))
-func (t *Table) CreateIndex(ctx context.Context, name string, column any, opts ...options.Lister[options.CreateIndexOptions]) error {
+func (t *Table) CreateIndex(ctx context.Context, name string, column any, opts ...options.Builder[options.CreateIndexOptions]) error {
 	cmd, err := createIndexCommand(t, name, column, opts...)
 	if err != nil {
 		return err
@@ -589,7 +589,7 @@ func validateIndexColumn(column any) error {
 }
 
 // createIndexCommand builds the createIndex command for the table
-func createIndexCommand(t *Table, name string, column any, opts ...options.Lister[options.CreateIndexOptions]) (command, error) {
+func createIndexCommand(t *Table, name string, column any, opts ...options.Builder[options.CreateIndexOptions]) (command, error) {
 	if err := validateIndexName(name); err != nil {
 		return command{}, err
 	}
@@ -647,7 +647,7 @@ func createIndexCommand(t *Table, name string, column any, opts ...options.Liste
 //
 //	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding",
 //	    options.CreateVectorIndex().SetIfNotExists(true))
-func (t *Table) CreateVectorIndex(ctx context.Context, name string, column string, opts ...options.Lister[options.CreateVectorIndexOptions]) error {
+func (t *Table) CreateVectorIndex(ctx context.Context, name string, column string, opts ...options.Builder[options.CreateVectorIndexOptions]) error {
 	cmd, err := createVectorIndexCommand(t, name, column, opts...)
 	if err != nil {
 		return err
@@ -658,7 +658,7 @@ func (t *Table) CreateVectorIndex(ctx context.Context, name string, column strin
 }
 
 // createVectorIndexCommand builds the createVectorIndex command for the table
-func createVectorIndexCommand(t *Table, name string, column string, opts ...options.Lister[options.CreateVectorIndexOptions]) (command, error) {
+func createVectorIndexCommand(t *Table, name string, column string, opts ...options.Builder[options.CreateVectorIndexOptions]) (command, error) {
 	if err := validateIndexName(name); err != nil {
 		return command{}, err
 	}
@@ -794,7 +794,7 @@ type listIndexesResponse struct {
 //	    fmt.Printf("Index %s on column %s (type: %s)\n",
 //	        idx.Name, idx.Definition.Column, idx.IndexType)
 //	}
-func (t *Table) ListIndexes(ctx context.Context, opts ...options.Lister[options.ListIndexesOptions]) ([]IndexDescriptor, error) {
+func (t *Table) ListIndexes(ctx context.Context, opts ...options.Builder[options.ListIndexesOptions]) ([]IndexDescriptor, error) {
 	cmd, err := listIndexesCommand(t, opts...)
 	if err != nil {
 		return nil, err
@@ -813,7 +813,7 @@ func (t *Table) ListIndexes(ctx context.Context, opts ...options.Lister[options.
 }
 
 // listIndexesCommand builds the listIndexes command for the table
-func listIndexesCommand(t *Table, opts ...options.Lister[options.ListIndexesOptions]) (command, error) {
+func listIndexesCommand(t *Table, opts ...options.Builder[options.ListIndexesOptions]) (command, error) {
 	payload := listIndexesPayload{}
 
 	merged, err := options.MergeOptions(opts...)

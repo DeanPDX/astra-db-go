@@ -43,14 +43,10 @@ type CreateIndexOptions struct {
 	CaseSensitive *bool
 }
 
-// List implements Lister[CreateIndexOptions] allowing the raw struct to be
-// passed directly to methods that accept ...Lister[CreateIndexOptions].
+// List implements Builder[CreateIndexOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CreateIndexOptions].
 func (o *CreateIndexOptions) List() []func(*CreateIndexOptions) {
-	return []func(*CreateIndexOptions){
-		func(target *CreateIndexOptions) {
-			copyNonNilFields(o, target)
-		},
-	}
+	return NoopBuilder(o)
 }
 
 // Validate implements Validator for CreateIndexOptions.
@@ -59,7 +55,7 @@ func (o CreateIndexOptions) Validate() error {
 }
 
 // CreateIndexOptionsBuilder is a builder for CreateIndexOptions that implements
-// Lister[CreateIndexOptions] following the MongoDB Go driver pattern.
+// Builder[CreateIndexOptions] following the MongoDB Go driver pattern.
 type CreateIndexOptionsBuilder struct {
 	Opts []func(*CreateIndexOptions)
 }
@@ -69,7 +65,7 @@ func CreateIndex() *CreateIndexOptionsBuilder {
 	return &CreateIndexOptionsBuilder{}
 }
 
-// List implements Lister[CreateIndexOptions].
+// List implements Builder[CreateIndexOptions].
 func (b *CreateIndexOptionsBuilder) List() []func(*CreateIndexOptions) {
 	return b.Opts
 }
@@ -126,14 +122,10 @@ type CreateVectorIndexOptions struct {
 	SourceModel *string
 }
 
-// List implements Lister[CreateVectorIndexOptions] allowing the raw struct to be
-// passed directly to methods that accept ...Lister[CreateVectorIndexOptions].
+// List implements Builder[CreateVectorIndexOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CreateVectorIndexOptions].
 func (o *CreateVectorIndexOptions) List() []func(*CreateVectorIndexOptions) {
-	return []func(*CreateVectorIndexOptions){
-		func(target *CreateVectorIndexOptions) {
-			copyNonNilFields(o, target)
-		},
-	}
+	return NoopBuilder(o)
 }
 
 // Validate implements Validator for CreateVectorIndexOptions.
@@ -142,7 +134,7 @@ func (o CreateVectorIndexOptions) Validate() error {
 }
 
 // CreateVectorIndexOptionsBuilder is a builder for CreateVectorIndexOptions that implements
-// Lister[CreateVectorIndexOptions] following the MongoDB Go driver pattern.
+// Builder[CreateVectorIndexOptions] following the MongoDB Go driver pattern.
 type CreateVectorIndexOptionsBuilder struct {
 	Opts []func(*CreateVectorIndexOptions)
 }
@@ -152,7 +144,7 @@ func CreateVectorIndex() *CreateVectorIndexOptionsBuilder {
 	return &CreateVectorIndexOptionsBuilder{}
 }
 
-// List implements Lister[CreateVectorIndexOptions].
+// List implements Builder[CreateVectorIndexOptions].
 func (b *CreateVectorIndexOptionsBuilder) List() []func(*CreateVectorIndexOptions) {
 	return b.Opts
 }
@@ -198,14 +190,10 @@ type ListIndexesOptions struct {
 	Explain *bool
 }
 
-// List implements Lister[ListIndexesOptions] allowing the raw struct to be
-// passed directly to methods that accept ...Lister[ListIndexesOptions].
+// List implements Builder[ListIndexesOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[ListIndexesOptions].
 func (o *ListIndexesOptions) List() []func(*ListIndexesOptions) {
-	return []func(*ListIndexesOptions){
-		func(target *ListIndexesOptions) {
-			copyNonNilFields(o, target)
-		},
-	}
+	return NoopBuilder(o)
 }
 
 // Validate implements Validator for ListIndexesOptions.
@@ -214,7 +202,7 @@ func (o ListIndexesOptions) Validate() error {
 }
 
 // ListIndexesOptionsBuilder is a builder for ListIndexesOptions that implements
-// Lister[ListIndexesOptions] following the MongoDB Go driver pattern.
+// Builder[ListIndexesOptions] following the MongoDB Go driver pattern.
 type ListIndexesOptionsBuilder struct {
 	Opts []func(*ListIndexesOptions)
 }
@@ -224,7 +212,7 @@ func ListIndexes() *ListIndexesOptionsBuilder {
 	return &ListIndexesOptionsBuilder{}
 }
 
-// List implements Lister[ListIndexesOptions].
+// List implements Builder[ListIndexesOptions].
 func (b *ListIndexesOptionsBuilder) List() []func(*ListIndexesOptions) {
 	return b.Opts
 }
