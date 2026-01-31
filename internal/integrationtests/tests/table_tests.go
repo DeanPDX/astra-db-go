@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/datastax/astra-db-go/filter"
 	"github.com/datastax/astra-db-go/internal/integrationtests/harness"
@@ -24,6 +25,8 @@ func init() {
 		{Name: "TableFindWithCursor", Run: TableFindWithCursor},
 		{Name: "TableFindWithSort", Run: TableFindWithSort},
 		{Name: "TableFindWithProjection", Run: TableFindWithProjection},
+		{Name: "TableListIndexes", Run: TableListIndexes},
+		{Name: "TableVectorIndex", Run: TableVectorIndex},
 		{Name: "TableDrop", Run: TableDrop},
 	}
 	harness.Register(t...)
@@ -230,6 +233,39 @@ func TableFind(e *harness.TestEnv) error {
 		return errors.New("expected warnings for filtering on non-indexed column but got none")
 	}
 
+	// Next, create index and verify warnings go away
+	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out"); err != nil {
+		return err
+	}
+
+	// Creating an index and then immediately querying seems to cause the following error:
+	// > The Data API command generated a database query that was syntactically correct and the database started processing, however too many nodes failed to complete the operation...
+	// See: https://github.com/datastax/astra-db-go/issues/4
+	time.Sleep(2 * time.Second)
+
+	// Verify warnings go away after creating the index
+	// Find all books that are not checked out using cursor.All()
+	idxCursor := tbl.Find(ctx, filter.Eq("is_checked_out", false))
+	defer idxCursor.Close(ctx)
+
+	if err := idxCursor.All(ctx, &books); err != nil {
+		return err
+	}
+
+	if len(idxCursor.Warnings()) > 0 {
+		return fmt.Errorf("expected no warnings after index creation. Got: %v", idxCursor.Warnings())
+	}
+
+	// Let's double-create that index and make sure it doesn't error out
+	if err := tbl.CreateIndex(ctx, "is_checked_out_idx", "is_checked_out", options.CreateIndex().SetIfNotExists(true)); err != nil {
+		return err
+	}
+
+	// Finally - drop index
+	if err := db.DropTableIndex(ctx, "is_checked_out_idx"); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -329,6 +365,208 @@ func TableFindWithProjection(e *harness.TestEnv) error {
 	// Check that other fields are not present (or are zero/nil)
 	if rating, ok := book["rating"]; ok && rating != nil && !reflect.ValueOf(rating).IsZero() {
 		return fmt.Errorf("expected rating to be excluded from projection, got %v", rating)
+	}
+
+	return nil
+}
+
+func TableListIndexes(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	tbl := db.Table(tableName)
+
+	// Create an index for testing
+	indexName := "rating_idx"
+	if err := tbl.CreateIndex(ctx, indexName, "rating", options.CreateIndex().SetIfNotExists(true)); err != nil {
+		return fmt.Errorf("failed to create index: %w", err)
+	}
+
+	// Test listing indexes without explain (names only)
+	indexes, err := tbl.ListIndexes(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list indexes: %w", err)
+	}
+
+	// Verify we got at least one index
+	if len(indexes) == 0 {
+		return errors.New("expected at least one index")
+	}
+
+	// Verify our index is in the list
+	found := false
+	for _, idx := range indexes {
+		if idx.Name == indexName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("expected to find index %q in list", indexName)
+	}
+
+	// Test listing indexes with explain (full metadata)
+	indexesExplain, err := tbl.ListIndexes(ctx, options.ListIndexes().SetExplain(true))
+	if err != nil {
+		return fmt.Errorf("failed to list indexes with explain: %w", err)
+	}
+
+	// Verify we got the same number of indexes
+	if len(indexesExplain) != len(indexes) {
+		return fmt.Errorf("expected %d indexes with explain, got %d", len(indexes), len(indexesExplain))
+	}
+
+	// Find our index and verify metadata
+	for _, idx := range indexesExplain {
+		if idx.Name == indexName {
+			if idx.Definition == nil {
+				return errors.New("expected definition to be present with explain=true")
+			}
+			if idx.Definition.Column != "rating" {
+				return fmt.Errorf("expected column 'rating', got %q", idx.Definition.Column)
+			}
+			if idx.IndexType != "regular" {
+				return fmt.Errorf("expected indexType 'regular', got %q", idx.IndexType)
+			}
+			break
+		}
+	}
+
+	// Clean up the index
+	if err := db.DropTableIndex(ctx, indexName); err != nil {
+		return fmt.Errorf("failed to drop index: %w", err)
+	}
+
+	return nil
+}
+
+const vectorTableName = "go_test_vectors"
+
+// TestDocument represents a document with vector embeddings for vector index tests
+type TestDocument struct {
+	ID        string    `json:"id"`
+	Content   string    `json:"content"`
+	Embedding []float32 `json:"embedding"`
+}
+
+func TableVectorIndex(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+
+	// Create a table with a vector column
+	definition := table.Definition{
+		Columns: map[string]table.Column{
+			"id":        table.Text(),
+			"content":   table.Text(),
+			"embedding": table.Vector(3), // 3-dimensional vectors for testing
+		},
+		PrimaryKey: table.PrimaryKey{
+			PartitionBy: []string{"id"},
+		},
+	}
+
+	_, err := db.CreateTable(ctx, vectorTableName, definition, options.WithIfNotExists(true))
+	if err != nil {
+		return fmt.Errorf("failed to create vector table: %w", err)
+	}
+
+	tbl := db.Table(vectorTableName)
+
+	// Create a vector index
+	indexName := "embedding_idx"
+	err = tbl.CreateVectorIndex(ctx, indexName, "embedding",
+		options.CreateVectorIndex().
+			SetMetric(options.MetricCosine).
+			SetIfNotExists(true))
+	if err != nil {
+		return fmt.Errorf("failed to create vector index: %w", err)
+	}
+
+	// Wait for index to be ready
+	time.Sleep(2 * time.Second)
+
+	// Insert test documents with embeddings
+	docs := []TestDocument{
+		{ID: "doc1", Content: "The quick brown fox", Embedding: []float32{1.0, 0.0, 0.0}},
+		{ID: "doc2", Content: "Jumped over the lazy dog", Embedding: []float32{0.0, 1.0, 0.0}},
+		{ID: "doc3", Content: "A quick brown dog", Embedding: []float32{0.9, 0.1, 0.0}}, // Similar to doc1
+	}
+
+	_, err = tbl.InsertMany(ctx, docs)
+	if err != nil {
+		return fmt.Errorf("failed to insert documents: %w", err)
+	}
+
+	// Test vector similarity search - find documents similar to [1.0, 0.0, 0.0]
+	queryVector := []float32{1.0, 0.0, 0.0}
+	cursor := tbl.Find(ctx, filter.F{},
+		options.WithSort(map[string]any{"embedding": queryVector}),
+		options.WithIncludeSimilarity(true),
+		options.WithLimit(3),
+	)
+	defer cursor.Close(ctx)
+
+	var results []map[string]any
+	if err := cursor.All(ctx, &results); err != nil {
+		return fmt.Errorf("failed to execute vector search: %w", err)
+	}
+
+	if len(results) == 0 {
+		return errors.New("expected to find documents in vector search")
+	}
+
+	// Verify similarity scores are present and ordered correctly
+	// The first result should be most similar to [1.0, 0.0, 0.0]
+	firstID, ok := results[0]["id"].(string)
+	if !ok {
+		return fmt.Errorf("expected id to be string, got %T", results[0]["id"])
+	}
+	// doc1 has exact match [1.0, 0.0, 0.0], should be first
+	if firstID != "doc1" {
+		return fmt.Errorf("expected first result to be 'doc1' (exact match), got %q", firstID)
+	}
+
+	// Verify similarity score is present
+	if _, ok := results[0]["$similarity"]; !ok {
+		return errors.New("expected $similarity field in results with includeSimilarity=true")
+	}
+
+	// Verify the index appears in ListIndexes with correct type
+	indexes, err := tbl.ListIndexes(ctx, options.ListIndexes().SetExplain(true))
+	if err != nil {
+		return fmt.Errorf("failed to list indexes: %w", err)
+	}
+
+	foundVectorIndex := false
+	for _, idx := range indexes {
+		if idx.Name == indexName {
+			foundVectorIndex = true
+			if idx.IndexType != "vector" {
+				return fmt.Errorf("expected indexType 'vector', got %q", idx.IndexType)
+			}
+			if idx.Definition == nil {
+				return errors.New("expected definition to be present")
+			}
+			if idx.Definition.Column != "embedding" {
+				return fmt.Errorf("expected column 'embedding', got %q", idx.Definition.Column)
+			}
+			if idx.Definition.Options == nil || idx.Definition.Options.Metric != "cosine" {
+				return fmt.Errorf("expected metric 'cosine' in index options")
+			}
+			break
+		}
+	}
+	if !foundVectorIndex {
+		return fmt.Errorf("expected to find vector index %q in list", indexName)
+	}
+
+	// Clean up - drop the index
+	if err := db.DropTableIndex(ctx, indexName); err != nil {
+		return fmt.Errorf("failed to drop vector index: %w", err)
+	}
+
+	// Clean up - drop the table
+	if err := db.DropTable(ctx, vectorTableName); err != nil {
+		return fmt.Errorf("failed to drop vector table: %w", err)
 	}
 
 	return nil

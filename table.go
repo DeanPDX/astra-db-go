@@ -163,11 +163,35 @@ type dropTablePayload struct {
 // Example usage:
 //
 //	err := db.DropTable(ctx, "my_table")
+//
 // Note: Warnings are accessible via the WarningHandler option callback only.
 func (d *Db) DropTable(ctx context.Context, name string) error {
 	cmd := d.newCmd("dropTable", dropTablePayload{Name: name})
 	_, _, err := cmd.Execute(ctx)
 	return err
+}
+
+// dropIndexPayload is the payload for the dropIndex command
+type dropIndexPayload struct {
+	Name string `json:"name"`
+}
+
+// DropTableIndex drops (deletes) an index from the database.
+//
+// Example usage:
+//
+//	err := db.DropTableIndex(ctx, "rating_idx")
+//
+// Note: Warnings are accessible via the WarningHandler option callback only.
+func (d *Db) DropTableIndex(ctx context.Context, name string) error {
+	cmd := dropTableIndexCommand(d, name)
+	_, _, err := cmd.Execute(ctx)
+	return err
+}
+
+// dropTableIndexCommand builds the dropIndex command for the database
+func dropTableIndexCommand(d *Db, name string) command {
+	return d.newCmd("dropIndex", dropIndexPayload{Name: name})
 }
 
 // tableFindPayload is the payload for the find command on tables
@@ -441,4 +465,368 @@ func (t *Table) InsertMany(ctx context.Context, rows any, opts ...options.APIOpt
 	}
 	err = json.Unmarshal(b, &resp)
 	return resp, err
+}
+
+// createIndexPayload is the payload for the createIndex command
+type createIndexPayload struct {
+	Name       string                `json:"name"`
+	Definition createIndexDefinition `json:"definition"`
+	Options    *createIndexOpts      `json:"options,omitempty"`
+}
+
+// createIndexDefinition defines which column to index and any index options
+type createIndexDefinition struct {
+	Column  any           `json:"column"` // string or map[string]string for $keys/$values
+	Options *indexDefOpts `json:"options,omitempty"`
+}
+
+// indexDefOpts contains options for text index behavior
+type indexDefOpts struct {
+	Ascii         *bool `json:"ascii,omitempty"`
+	Normalize     *bool `json:"normalize,omitempty"`
+	CaseSensitive *bool `json:"caseSensitive,omitempty"`
+}
+
+// createIndexOpts contains command-level options for index creation
+type createIndexOpts struct {
+	IfNotExists bool `json:"ifNotExists,omitempty"`
+}
+
+// createVectorIndexPayload is the payload for the createVectorIndex command
+type createVectorIndexPayload struct {
+	Name       string                      `json:"name"`
+	Definition createVectorIndexDefinition `json:"definition"`
+	Options    *createIndexOpts            `json:"options,omitempty"`
+}
+
+// createVectorIndexDefinition defines which column to index and vector options
+type createVectorIndexDefinition struct {
+	Column  string              `json:"column"`
+	Options *vectorIndexDefOpts `json:"options,omitempty"`
+}
+
+// vectorIndexDefOpts contains options for vector index behavior
+type vectorIndexDefOpts struct {
+	Metric      string `json:"metric,omitempty"`
+	SourceModel string `json:"sourceModel,omitempty"`
+}
+
+// CreateIndex creates an index on a column in the table.
+//
+// The column parameter can be:
+//   - A string for regular column indexes: "column_name"
+//   - A map for indexing map column keys or values: map[string]string{"map_col": "$keys"}
+//
+// For text columns, you can configure index behavior using SetAscii, SetNormalize,
+// and SetCaseSensitive on the options builder.
+//
+// Example - basic column index:
+//
+//	err := tbl.CreateIndex(ctx, "rating_idx", "rating")
+//
+// Example - text column with case-insensitive matching:
+//
+//	err := tbl.CreateIndex(ctx, "title_idx", "title",
+//	    options.CreateIndex().SetCaseSensitive(false))
+//
+// Example - map column keys index:
+//
+//	err := tbl.CreateIndex(ctx, "tags_idx", map[string]string{"tags": "$keys"})
+//
+// Example - with ifNotExists:
+//
+//	err := tbl.CreateIndex(ctx, "rating_idx", "rating",
+//	    options.CreateIndex().SetIfNotExists(true))
+//
+// Example - combining multiple option sources:
+//
+//	err := tbl.CreateIndex(ctx, "title_idx", "title",
+//	    options.CreateIndex().SetAscii(true),
+//	    options.CreateIndex().SetIfNotExists(true))
+func (t *Table) CreateIndex(ctx context.Context, name string, column any, opts ...options.Builder[options.CreateIndexOptions]) error {
+	cmd, err := createIndexCommand(t, name, column, opts...)
+	if err != nil {
+		return err
+	}
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	_, _, err = cmd.Execute(ctx)
+	return err
+}
+
+// Validate index name.
+func validateIndexName(idxName string) error {
+	// Right now we are only checking for empty names. Rationale:
+	// https://github.com/datastax/astra-db-go/pull/7#discussion_r2743808855
+	if idxName == "" {
+		return fmt.Errorf("index name cannot be empty")
+	}
+	// All good.
+	return nil
+}
+
+// Column can be a string or a map for $keys/$values. Examples:
+//
+//   - "column_name"
+//   - map[string]string{"example_map_column": "$keys"}
+func validateIndexColumn(column any) error {
+	// Validate type
+	switch column := column.(type) {
+	case string:
+		// OK. But for string, make sure it's not empty
+		if column == "" {
+			return fmt.Errorf("index column name cannot be empty")
+		}
+	case map[string]string:
+		// OK. But make sure not empty map.
+		if len(column) == 0 {
+			return fmt.Errorf("index column map cannot be empty")
+		}
+	default:
+		return fmt.Errorf("invalid index column type: %T", column)
+	}
+	// All good.
+	return nil
+}
+
+// createIndexCommand builds the createIndex command for the table
+func createIndexCommand(t *Table, name string, column any, opts ...options.Builder[options.CreateIndexOptions]) (command, error) {
+	if err := validateIndexName(name); err != nil {
+		return command{}, err
+	}
+	if err := validateIndexColumn(column); err != nil {
+		return command{}, err
+	}
+	payload := createIndexPayload{
+		Name: name,
+		Definition: createIndexDefinition{
+			Column: column,
+		},
+	}
+
+	merged, err := options.MergeOptions(opts...)
+	if err != nil {
+		return command{}, err
+	}
+
+	if merged != nil {
+		// Add definition options if any text index options are set
+		if merged.Ascii != nil || merged.Normalize != nil || merged.CaseSensitive != nil {
+			payload.Definition.Options = &indexDefOpts{
+				Ascii:         merged.Ascii,
+				Normalize:     merged.Normalize,
+				CaseSensitive: merged.CaseSensitive,
+			}
+		}
+
+		// Add command options if ifNotExists is set
+		if merged.IfNotExists != nil && *merged.IfNotExists {
+			payload.Options = &createIndexOpts{
+				IfNotExists: true,
+			}
+		}
+	}
+
+	return t.newCmd("createIndex", payload), nil
+}
+
+// CreateVectorIndex creates a vector index on a vector column in the table.
+//
+// Vector indexes enable efficient similarity search on vector columns.
+// You can configure the similarity metric and source model for optimization.
+//
+// Example - basic vector index:
+//
+//	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding")
+//
+// Example - with metric and source model:
+//
+//	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding",
+//	    options.CreateVectorIndex().SetMetric(options.MetricDotProduct).SetSourceModel("ada002"))
+//
+// Example - with ifNotExists:
+//
+//	err := tbl.CreateVectorIndex(ctx, "embedding_idx", "embedding",
+//	    options.CreateVectorIndex().SetIfNotExists(true))
+func (t *Table) CreateVectorIndex(ctx context.Context, name string, column string, opts ...options.Builder[options.CreateVectorIndexOptions]) error {
+	cmd, err := createVectorIndexCommand(t, name, column, opts...)
+	if err != nil {
+		return err
+	}
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	_, _, err = cmd.Execute(ctx)
+	return err
+}
+
+// createVectorIndexCommand builds the createVectorIndex command for the table
+func createVectorIndexCommand(t *Table, name string, column string, opts ...options.Builder[options.CreateVectorIndexOptions]) (command, error) {
+	if err := validateIndexName(name); err != nil {
+		return command{}, err
+	}
+	if err := validateIndexColumn(column); err != nil {
+		return command{}, err
+	}
+	payload := createVectorIndexPayload{
+		Name: name,
+		Definition: createVectorIndexDefinition{
+			Column: column,
+		},
+	}
+
+	merged, err := options.MergeOptions(opts...)
+	if err != nil {
+		return command{}, err
+	}
+
+	if merged != nil {
+		// Add definition options if metric or sourceModel are set
+		if merged.Metric != nil || merged.SourceModel != nil {
+			defOpts := &vectorIndexDefOpts{}
+			if merged.Metric != nil {
+				defOpts.Metric = string(*merged.Metric)
+			}
+			if merged.SourceModel != nil {
+				defOpts.SourceModel = *merged.SourceModel
+			}
+			payload.Definition.Options = defOpts
+		}
+
+		// Add command options if ifNotExists is set
+		if merged.IfNotExists != nil && *merged.IfNotExists {
+			payload.Options = &createIndexOpts{
+				IfNotExists: true,
+			}
+		}
+	}
+
+	return t.newCmd("createVectorIndex", payload), nil
+}
+
+// IndexDescriptor describes an index on a table.
+// When listing indexes with explain=true, all fields are populated.
+// When explain=false, only Name is populated.
+type IndexDescriptor struct {
+	// Name is the index identifier.
+	Name string `json:"name"`
+	// Definition contains the column and options for the index.
+	// Only populated when explain=true.
+	Definition *IndexDefinition `json:"definition,omitempty"`
+	// IndexType is either "regular" or "vector".
+	// Only populated when explain=true.
+	IndexType string `json:"indexType,omitempty"`
+}
+
+// UnmarshalJSON implements custom unmarshaling for IndexDescriptor.
+// The API returns either a string (name only) or an object (full metadata)
+// depending on the explain option.
+func (d *IndexDescriptor) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as a string first (names only response)
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		d.Name = name
+		return nil
+	}
+
+	// Otherwise unmarshal as an object (explain=true response)
+	type indexDescriptorAlias IndexDescriptor
+	var alias indexDescriptorAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*d = IndexDescriptor(alias)
+	return nil
+}
+
+// IndexDefinition describes which column is indexed and its options.
+type IndexDefinition struct {
+	// Column is the name of the indexed column.
+	Column string `json:"column"`
+	// Options contains index-specific configuration.
+	Options *IndexDefinitionOptions `json:"options,omitempty"`
+}
+
+// IndexDefinitionOptions contains configuration for an index.
+type IndexDefinitionOptions struct {
+	// Metric is the similarity metric for vector indexes (cosine, dot_product, euclidean).
+	Metric string `json:"metric,omitempty"`
+	// SourceModel is the embedding model identifier for vector indexes.
+	SourceModel string `json:"sourceModel,omitempty"`
+	// Ascii if true, converts non-ASCII characters to US-ASCII before indexing.
+	Ascii *bool `json:"ascii,omitempty"`
+	// Normalize if true, applies Unicode character normalization before indexing.
+	Normalize *bool `json:"normalize,omitempty"`
+	// CaseSensitive if true, enforces case-sensitive matching.
+	CaseSensitive *bool `json:"caseSensitive,omitempty"`
+}
+
+// listIndexesPayload is the payload for the listIndexes command
+type listIndexesPayload struct {
+	Options *listIndexesOpts `json:"options,omitempty"`
+}
+
+// listIndexesOpts contains options for the listIndexes command
+type listIndexesOpts struct {
+	Explain bool `json:"explain,omitempty"`
+}
+
+// listIndexesResponse is the response from the listIndexes command
+type listIndexesResponse struct {
+	Status struct {
+		Indexes []IndexDescriptor `json:"indexes"`
+	} `json:"status"`
+}
+
+// ListIndexes lists indexes on the table.
+//
+// By default, only index names are returned. Use SetExplain(true) to get
+// full index metadata including column definitions and options.
+//
+// Example - list index names only:
+//
+//	indexes, err := tbl.ListIndexes(ctx)
+//	for _, idx := range indexes {
+//	    fmt.Println(idx.Name)
+//	}
+//
+// Example - list with full metadata:
+//
+//	indexes, err := tbl.ListIndexes(ctx, options.ListIndexes().SetExplain(true))
+//	for _, idx := range indexes {
+//	    fmt.Printf("Index %s on column %s (type: %s)\n",
+//	        idx.Name, idx.Definition.Column, idx.IndexType)
+//	}
+func (t *Table) ListIndexes(ctx context.Context, opts ...options.Builder[options.ListIndexesOptions]) ([]IndexDescriptor, error) {
+	cmd, err := listIndexesCommand(t, opts...)
+	if err != nil {
+		return nil, err
+	}
+	b, _, err := cmd.Execute(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp listIndexesResponse
+	if err := json.Unmarshal(b, &resp); err != nil {
+		return nil, err
+	}
+
+	return resp.Status.Indexes, nil
+}
+
+// listIndexesCommand builds the listIndexes command for the table
+func listIndexesCommand(t *Table, opts ...options.Builder[options.ListIndexesOptions]) (command, error) {
+	payload := listIndexesPayload{}
+
+	merged, err := options.MergeOptions(opts...)
+	if err != nil {
+		return command{}, err
+	}
+
+	// Add options if explain is set
+	if merged != nil && merged.Explain != nil && *merged.Explain {
+		payload.Options = &listIndexesOpts{
+			Explain: true,
+		}
+	}
+
+	return t.newCmd("listIndexes", payload), nil
 }
