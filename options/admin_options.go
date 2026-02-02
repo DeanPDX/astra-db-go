@@ -1,5 +1,5 @@
 // Copyright DataStax, Inc.
-//
+
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -43,21 +43,26 @@ type FindAvailableRegionsOptions struct {
 	FilterByOrg *string
 }
 
-// List implements Lister[FindAvailableRegionsOptions] allowing the raw struct to be
-// passed directly to methods that accept ...Lister[FindAvailableRegionsOptions].
-func (o *FindAvailableRegionsOptions) List() []func(*FindAvailableRegionsOptions) error {
-	return []func(*FindAvailableRegionsOptions) error{
-		func(target *FindAvailableRegionsOptions) error {
+// Validate implements the Validator interface for FindAvailableRegionsOptions.
+func (o FindAvailableRegionsOptions) Validate() error {
+	// No required fields, always valid
+	return nil
+}
+
+// List implements Builder[FindAvailableRegionsOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[FindAvailableRegionsOptions].
+func (o *FindAvailableRegionsOptions) List() []func(*FindAvailableRegionsOptions) {
+	return []func(*FindAvailableRegionsOptions){
+		func(target *FindAvailableRegionsOptions) {
 			copyNonNilFields(o, target)
-			return nil
 		},
 	}
 }
 
 // FindAvailableRegionsOptionsBuilder is a builder for FindAvailableRegionsOptions that implements
-// Lister[FindAvailableRegionsOptions] following the MongoDB Go driver pattern.
+// Builder[FindAvailableRegionsOptions] following the MongoDB Go driver pattern.
 type FindAvailableRegionsOptionsBuilder struct {
-	Opts []func(*FindAvailableRegionsOptions) error
+	Opts []func(*FindAvailableRegionsOptions)
 }
 
 // FindAvailableRegions creates a new FindAvailableRegionsOptionsBuilder.
@@ -65,17 +70,16 @@ func FindAvailableRegions() *FindAvailableRegionsOptionsBuilder {
 	return &FindAvailableRegionsOptionsBuilder{}
 }
 
-// List implements Lister[FindAvailableRegionsOptions].
-func (b *FindAvailableRegionsOptionsBuilder) List() []func(*FindAvailableRegionsOptions) error {
+// List implements Builder[FindAvailableRegionsOptions].
+func (b *FindAvailableRegionsOptionsBuilder) List() []func(*FindAvailableRegionsOptions) {
 	return b.Opts
 }
 
 // SetRegionType sets the region-type query parameter.
 // Valid values: RegionTypeAll, RegionTypeVector, or empty string.
 func (b *FindAvailableRegionsOptionsBuilder) SetRegionType(v string) *FindAvailableRegionsOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *FindAvailableRegionsOptions) error {
+	b.Opts = append(b.Opts, func(o *FindAvailableRegionsOptions) {
 		o.RegionType = &v
-		return nil
 	})
 	return b
 }
@@ -83,9 +87,8 @@ func (b *FindAvailableRegionsOptionsBuilder) SetRegionType(v string) *FindAvaila
 // SetFilterByOrg sets the filter-by-org query parameter.
 // Valid values: FilterByOrgEnabled, FilterByOrgDisabled, or empty string.
 func (b *FindAvailableRegionsOptionsBuilder) SetFilterByOrg(v string) *FindAvailableRegionsOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *FindAvailableRegionsOptions) error {
+	b.Opts = append(b.Opts, func(o *FindAvailableRegionsOptions) {
 		o.FilterByOrg = &v
-		return nil
 	})
 	return b
 }

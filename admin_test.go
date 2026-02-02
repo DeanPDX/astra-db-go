@@ -154,7 +154,7 @@ func TestAdminOptionOverride(t *testing.T) {
 }
 
 func TestFindAvailableRegionsOptionsStruct(t *testing.T) {
-	// Test that the raw struct can be used directly (implements Lister)
+	// Test that the raw struct can be used directly (implements Builder)
 	regionType := options.RegionTypeVector
 	filterByOrg := options.FilterByOrgEnabled
 	opts := &options.FindAvailableRegionsOptions{

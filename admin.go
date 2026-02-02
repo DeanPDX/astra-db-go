@@ -84,7 +84,7 @@ func (a *Admin) resolveOptions() *options.APIOptions {
 //
 //	regions, err := admin.FindAvailableRegions(ctx,
 //	    options.FindAvailableRegions().SetFilterByOrg(options.FilterByOrgEnabled))
-func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Lister[options.FindAvailableRegionsOptions]) ([]Region, error) {
+func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Builder[options.FindAvailableRegionsOptions]) ([]Region, error) {
 	// Merge options
 	merged, err := options.MergeOptions(opts...)
 	if err != nil {
