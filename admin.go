@@ -15,6 +15,7 @@
 package astradb
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -30,11 +31,107 @@ const (
 	DevOpsAPIBaseURL = "https://api.astra.datastax.com"
 )
 
+// DefaultAdminAPIVersion is the default version of the Astra DevOps API.
+const DefaultAdminAPIVersion = "v2"
+
 // Admin provides access to Astra DevOps API operations.
 // Obtain an Admin instance from DataAPIClient.Admin().
 type Admin struct {
-	client  *DataAPIClient
-	options *options.APIOptions
+	client     *DataAPIClient
+	options    *options.APIOptions
+	apiVersion string
+}
+
+func (a *Admin) createCommand(method string, path string, payload any) *adminCommand {
+	return &adminCommand{
+		admin:       a,
+		method:      method,
+		path:        path,
+		payload:     payload,
+		queryParams: url.Values{},
+	}
+}
+
+type adminCommand struct {
+	admin       *Admin
+	method      string
+	path        string
+	payload     any
+	queryParams url.Values
+}
+
+func (ac *adminCommand) url() (string, error) {
+	baseURL, err := url.JoinPath(DevOpsAPIBaseURL, ac.admin.apiVersion, ac.path)
+	if err != nil {
+		return "", err
+	}
+	if len(ac.queryParams) > 0 {
+		return baseURL + "?" + ac.queryParams.Encode(), nil
+	}
+	return baseURL, nil
+}
+
+func (ac *adminCommand) withQueryParam(key, value string) *adminCommand {
+	ac.queryParams.Set(key, value)
+	return ac
+}
+
+func (ac *adminCommand) execute(ctx context.Context) ([]byte, error) {
+	// Build URL with query params
+	reqURL, err := ac.url()
+	if err != nil {
+		return nil, err
+	}
+
+	// Marshal payload to JSON if present
+	var bodyReader io.Reader
+	if ac.payload != nil {
+		payloadBytes, err := json.Marshal(ac.payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		}
+		bodyReader = bytes.NewReader(payloadBytes)
+	}
+
+	// Create request
+	req, err := http.NewRequestWithContext(ctx, ac.method, reqURL, bodyReader)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set headers
+	resolvedOpts := ac.admin.resolveOptions()
+	token := resolvedOpts.GetToken()
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add custom headers from options
+	for key, value := range resolvedOpts.Headers {
+		req.Header.Set(key, value)
+	}
+
+	// Execute request
+	httpClient := resolvedOpts.GetHTTPClient()
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle error responses
+	if resp.StatusCode >= 400 {
+		return nil, ac.admin.extractDevOpsError(resp.StatusCode, body)
+	}
+
+	return body, nil
 }
 
 // Region represents an available serverless region from the DevOps API.
@@ -91,58 +188,21 @@ func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Builde
 		return nil, err
 	}
 
-	// Build URL with query parameters
-	reqURL, err := url.Parse(DevOpsAPIBaseURL + "/v2/regions/serverless")
-	if err != nil {
-		return nil, err
-	}
-
-	q := reqURL.Query()
+	// Build command with query parameters
+	cmd := a.createCommand(http.MethodGet, "/regions/serverless", nil)
 	if merged != nil {
 		if merged.RegionType != nil && *merged.RegionType != "" {
-			q.Set("region-type", *merged.RegionType)
+			cmd.withQueryParam("region-type", *merged.RegionType)
 		}
 		if merged.FilterByOrg != nil && *merged.FilterByOrg != "" {
-			q.Set("filter-by-org", *merged.FilterByOrg)
+			cmd.withQueryParam("filter-by-org", *merged.FilterByOrg)
 		}
-	}
-	reqURL.RawQuery = q.Encode()
-
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Set authentication - DevOps API uses Bearer token
-	resolvedOpts := a.resolveOptions()
-	token := resolvedOpts.GetToken()
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	req.Header.Set("Accept", "application/json")
-
-	// Add any custom headers
-	for key, value := range resolvedOpts.Headers {
-		req.Header.Set(key, value)
 	}
 
 	// Execute request
-	httpClient := resolvedOpts.GetHTTPClient()
-	resp, err := httpClient.Do(req)
+	body, err := cmd.execute(ctx)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Handle error responses
-	if resp.StatusCode >= 400 {
-		return nil, a.extractDevOpsError(resp.StatusCode, body)
 	}
 
 	// Parse response - the API returns a JSON array of regions

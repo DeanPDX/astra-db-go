@@ -173,3 +173,31 @@ func TestFindAvailableRegionsOptionsStruct(t *testing.T) {
 		t.Error("expected FilterByOrg to be 'enabled'")
 	}
 }
+
+/*
+
+curl -sS -L -X GET "https://api.astra.datastax.com/v2/regions/serverless?region-type=REGION_TYPE&filter-by-org=FILTER_BY_ORG" \
+--header "Authorization: Bearer APPLICATION_TOKEN" \
+--header "Content-Type: application/json"
+*/
+
+func TestSTuff(t *testing.T) {
+	// Verify that Admin inherits options from client
+	client := NewClient(options.WithToken("client-token"))
+	admin := client.Admin()
+	cmd := admin.createCommand("GET", "/regions/serverless", nil)
+	url, err := cmd.url()
+	if err != nil {
+		t.Fatalf("cmd.url() producted unexpected error: %v", err)
+	}
+	expectedURL := "https://api.astra.datastax.com/v2/regions/serverless"
+	if url != expectedURL {
+		t.Errorf("expected: %s\ngot: %s", expectedURL, url)
+	}
+}
+
+/*
+curl -sS -L -X GET "https://api.astra.datastax.com/v2/databases?include=STRING&provider=STRING&starting_after=STRING&limit=INTEGER" \
+--header "Authorization: Bearer APPLICATION_TOKEN" \
+--header "Content-Type: application/json"
+*/
