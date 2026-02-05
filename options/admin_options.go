@@ -16,10 +16,6 @@ package options
 
 // FindAvailableRegionsOptions represents options for the FindAvailableRegions operation.
 type FindAvailableRegionsOptions struct {
-	// RegionType filters regions by type.
-	// Valid values: RegionTypeAll, RegionTypeVector, or empty string (serverless only).
-	RegionType *string
-
 	// FilterByOrg filters by organization access. Whether to only return regions that
 	// can be used by the caller’s organization.
 	FilterByOrg *bool
@@ -55,19 +51,6 @@ func FindAvailableRegions() *FindAvailableRegionsOptionsBuilder {
 // List implements Builder[FindAvailableRegionsOptions].
 func (b *FindAvailableRegionsOptionsBuilder) List() []func(*FindAvailableRegionsOptions) {
 	return b.Opts
-}
-
-// SetRegionType sets the region-type query parameter.
-//
-// Valid values:
-//   - "" - return only serverless regions (default)
-//   - "all" - return both vector and serverless regions
-//   - "vector" - return only vector regions
-func (b *FindAvailableRegionsOptionsBuilder) SetRegionType(v string) *FindAvailableRegionsOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *FindAvailableRegionsOptions) {
-		o.RegionType = &v
-	})
-	return b
 }
 
 // SetFilterByOrg sets the filter-by-org query parameter.

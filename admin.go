@@ -195,13 +195,10 @@ func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Builde
 	}
 
 	// Build command with query parameters.
-	// NOTE: this ends with /serverless but the API still accepts the region-type query
-	// parameter to filter for vector regions.
-	cmd := a.createCommand(http.MethodGet, "/regions/serverless", nil)
+	// Hard-coding to region-type=vector because classic isn't relevant to this client.
+	cmd := a.createCommand(http.MethodGet, "/regions/serverless", nil).
+		withQueryParam("region-type", "vector")
 	if merged != nil {
-		if merged.RegionType != nil && *merged.RegionType != "" {
-			cmd.withQueryParam("region-type", *merged.RegionType)
-		}
 		if merged.FilterByOrg != nil && *merged.FilterByOrg {
 			cmd.withQueryParam("filter-by-org", "enabled")
 		}
