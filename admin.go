@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -85,13 +86,16 @@ func (ac *adminCommand) execute(ctx context.Context) ([]byte, error) {
 
 	// Marshal payload to JSON if present
 	var bodyReader io.Reader
+	var payloadBytes []byte
 	if ac.payload != nil {
-		payloadBytes, err := json.Marshal(ac.payload)
+		payloadBytes, err = json.Marshal(ac.payload)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal payload: %w", err)
 		}
 		bodyReader = bytes.NewReader(payloadBytes)
 	}
+
+	slog.Debug("Running adminCommand.execute", "req.method", ac.method, "req.url", reqURL, "req.body", string(payloadBytes))
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, ac.method, reqURL, bodyReader)
@@ -125,6 +129,8 @@ func (ac *adminCommand) execute(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	slog.Debug("adminCommand.execute response", "resp.StatusCode", resp.StatusCode, "resp.Status", resp.Status, "resp.body", string(body))
 
 	// Handle error responses
 	if resp.StatusCode >= 400 {
