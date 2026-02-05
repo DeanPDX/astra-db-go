@@ -14,33 +14,15 @@
 
 package options
 
-// RegionType constants for FindAvailableRegions query parameter.
-// Use these with SetRegionType() to filter regions by type.
-const (
-	// RegionTypeAll returns both vector and serverless regions.
-	RegionTypeAll = "all"
-	// RegionTypeVector returns only vector-capable regions.
-	RegionTypeVector = "vector"
-)
-
-// FilterByOrg constants for FindAvailableRegions query parameter.
-// Use these with SetFilterByOrg() to filter by organization access.
-const (
-	// FilterByOrgEnabled returns only regions accessible to the organization.
-	FilterByOrgEnabled = "enabled"
-	// FilterByOrgDisabled returns all regions regardless of organization access.
-	FilterByOrgDisabled = "disabled"
-)
-
 // FindAvailableRegionsOptions represents options for the FindAvailableRegions operation.
 type FindAvailableRegionsOptions struct {
 	// RegionType filters regions by type.
 	// Valid values: RegionTypeAll, RegionTypeVector, or empty string (serverless only).
 	RegionType *string
 
-	// FilterByOrg filters by organization access.
-	// Valid values: FilterByOrgEnabled, FilterByOrgDisabled, or empty string.
-	FilterByOrg *string
+	// FilterByOrg filters by organization access. Whether to only return regions that
+	// can be used by the caller’s organization.
+	FilterByOrg *bool
 }
 
 // Validate implements the Validator interface for FindAvailableRegionsOptions.
@@ -76,7 +58,11 @@ func (b *FindAvailableRegionsOptionsBuilder) List() []func(*FindAvailableRegions
 }
 
 // SetRegionType sets the region-type query parameter.
-// Valid values: RegionTypeAll, RegionTypeVector, or empty string.
+//
+// Valid values:
+//   - "" - return only serverless regions (default)
+//   - "all" - return both vector and serverless regions
+//   - "vector" - return only vector regions
 func (b *FindAvailableRegionsOptionsBuilder) SetRegionType(v string) *FindAvailableRegionsOptionsBuilder {
 	b.Opts = append(b.Opts, func(o *FindAvailableRegionsOptions) {
 		o.RegionType = &v
@@ -86,7 +72,7 @@ func (b *FindAvailableRegionsOptionsBuilder) SetRegionType(v string) *FindAvaila
 
 // SetFilterByOrg sets the filter-by-org query parameter.
 // Valid values: FilterByOrgEnabled, FilterByOrgDisabled, or empty string.
-func (b *FindAvailableRegionsOptionsBuilder) SetFilterByOrg(v string) *FindAvailableRegionsOptionsBuilder {
+func (b *FindAvailableRegionsOptionsBuilder) SetFilterByOrg(v bool) *FindAvailableRegionsOptionsBuilder {
 	b.Opts = append(b.Opts, func(o *FindAvailableRegionsOptions) {
 		o.FilterByOrg = &v
 	})

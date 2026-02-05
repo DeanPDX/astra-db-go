@@ -93,7 +93,7 @@ func TestRegionUnmarshal(t *testing.T) {
 
 func TestFindAvailableRegionsOptionsBuilder(t *testing.T) {
 	t.Run("region type filter", func(t *testing.T) {
-		opts := options.FindAvailableRegions().SetRegionType(options.RegionTypeVector)
+		opts := options.FindAvailableRegions().SetRegionType("vector")
 		merged, err := options.MergeOptions(opts)
 		if err != nil {
 			t.Fatalf("MergeOptions: %v", err)
@@ -104,20 +104,20 @@ func TestFindAvailableRegionsOptionsBuilder(t *testing.T) {
 	})
 
 	t.Run("filter by org", func(t *testing.T) {
-		opts := options.FindAvailableRegions().SetFilterByOrg(options.FilterByOrgEnabled)
+		opts := options.FindAvailableRegions().SetFilterByOrg(true)
 		merged, err := options.MergeOptions(opts)
 		if err != nil {
 			t.Fatalf("MergeOptions: %v", err)
 		}
-		if merged.FilterByOrg == nil || *merged.FilterByOrg != "enabled" {
-			t.Error("expected FilterByOrg to be 'enabled'")
+		if merged.FilterByOrg == nil || *merged.FilterByOrg != true {
+			t.Error("expected FilterByOrg to be true")
 		}
 	})
 
 	t.Run("combined options", func(t *testing.T) {
 		opts := options.FindAvailableRegions().
-			SetRegionType(options.RegionTypeAll).
-			SetFilterByOrg(options.FilterByOrgEnabled)
+			SetRegionType("all").
+			SetFilterByOrg(true)
 		merged, err := options.MergeOptions(opts)
 		if err != nil {
 			t.Fatalf("MergeOptions: %v", err)
@@ -125,8 +125,8 @@ func TestFindAvailableRegionsOptionsBuilder(t *testing.T) {
 		if merged.RegionType == nil || *merged.RegionType != "all" {
 			t.Error("expected RegionType to be 'all'")
 		}
-		if merged.FilterByOrg == nil || *merged.FilterByOrg != "enabled" {
-			t.Error("expected FilterByOrg to be 'enabled'")
+		if merged.FilterByOrg == nil || *merged.FilterByOrg != true {
+			t.Error("expected FilterByOrg to be true")
 		}
 	})
 }
@@ -155,11 +155,10 @@ func TestAdminOptionOverride(t *testing.T) {
 
 func TestFindAvailableRegionsOptionsStruct(t *testing.T) {
 	// Test that the raw struct can be used directly (implements Builder)
-	regionType := options.RegionTypeVector
-	filterByOrg := options.FilterByOrgEnabled
+	regionType := "vector"
 	opts := &options.FindAvailableRegionsOptions{
 		RegionType:  &regionType,
-		FilterByOrg: &filterByOrg,
+		FilterByOrg: boolPtr(true),
 	}
 
 	merged, err := options.MergeOptions(opts)
@@ -169,8 +168,8 @@ func TestFindAvailableRegionsOptionsStruct(t *testing.T) {
 	if merged.RegionType == nil || *merged.RegionType != "vector" {
 		t.Error("expected RegionType to be 'vector'")
 	}
-	if merged.FilterByOrg == nil || *merged.FilterByOrg != "enabled" {
-		t.Error("expected FilterByOrg to be 'enabled'")
+	if merged.FilterByOrg == nil || *merged.FilterByOrg != true {
+		t.Error("expected FilterByOrg to be true")
 	}
 }
 
