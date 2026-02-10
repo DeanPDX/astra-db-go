@@ -15,6 +15,8 @@ func init() {
 	t := []harness.IntegrationTest{
 		{Name: "AdminFindAvailableRegionsNoFilter", Run: AdminFindAvailableRegionsNoFilter},
 		{Name: "AdminFindAvailableRegionsFilterByOrg", Run: AdminFindAvailableRegionsFilterByOrg},
+		{Name: "AdminListDatabases", Run: AdminListDatabases},
+		{Name: "AdminListDatabasesPaginated", Run: AdminListDatabasesPaginated},
 		{Name: "AdminCreateDropDatabase", Run: AdminCreateDropDatabase},
 	}
 	harness.Register(t...)
@@ -37,6 +39,57 @@ func AdminFindAvailableRegionsFilterByOrg(e *harness.TestEnv) error {
 	_, err := admin.FindAvailableRegions(ctx,
 		options.FindAvailableRegions().SetFilterByOrg(true))
 	return err
+}
+
+func AdminListDatabases(e *harness.TestEnv) error {
+	ctx := context.Background()
+	client := e.DefaultClient()
+	admin := client.Admin()
+
+	databases, err := admin.ListDatabases(ctx, options.ListDatabases().SetProvider(options.CloudProviderAzure))
+	if err != nil {
+		return fmt.Errorf("ListDatabases failed: %w", err)
+	}
+	slog.Info("Listed databases", "count", len(databases))
+
+	for _, db := range databases {
+		slog.Info("Database", "id", db.ID, "name", db.Info.Name, "status", db.Status, "provider", db.Info.CloudProvider, "region", db.Info.Region)
+	}
+
+	return nil
+}
+
+func AdminListDatabasesPaginated(e *harness.TestEnv) error {
+	ctx := context.Background()
+	client := e.DefaultClient()
+	admin := client.Admin()
+
+	// Using low page-size to try to  ensure pagination is exercised in tests.
+	pageSize := 5
+	var all []astradb.Database
+	opts := options.ListDatabases().SetInclude(options.DatabaseIncludeAll).SetLimit(pageSize)
+
+	for page := 1; ; page++ {
+		databases, err := admin.ListDatabases(ctx, opts)
+		if err != nil {
+			return fmt.Errorf("ListDatabases page %d failed: %w", page, err)
+		}
+		slog.Info("Listed databases page", "page", page, "count", len(databases))
+		all = append(all, databases...)
+
+		if len(databases) < pageSize {
+			break
+		}
+		// Set up cursor for next page
+		opts.SetStartingAfter(databases[len(databases)-1].ID)
+	}
+
+	slog.Info("Total databases found via pagination", "count", len(all))
+	for _, db := range all {
+		slog.Info("Database", "id", db.ID, "name", db.Info.Name, "status", db.Status)
+	}
+
+	return nil
 }
 
 func AdminCreateDropDatabase(e *harness.TestEnv) error {

@@ -196,6 +196,78 @@ func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Builde
 	return regions, nil
 }
 
+// ListDatabases retrieves databases accessible to the caller.
+//
+// By default, only non-terminated databases are returned (up to 25).
+// Use SetLimit (up to 100) and SetStartingAfter to control pagination.
+//
+// Example - list databases:
+//
+//	admin := client.Admin()
+//	databases, err := admin.ListDatabases(ctx)
+//
+// Example - list only active GCP databases:
+//
+//	databases, err := admin.ListDatabases(ctx,
+//	    options.ListDatabases().
+//	        SetInclude(options.DatabaseIncludeActive).
+//	        SetProvider(options.CloudProviderGCP))
+//
+// Example - paginate through results and retrieve all databases:
+//
+//	func listAll(ctx context.Context, admin *astradb.Admin) ([]astradb.Database, error) {
+//		var all []astradb.Database
+//		pageSize := 100
+//		opts := options.ListDatabases().SetInclude(options.DatabaseIncludeAll).SetLimit(pageSize)
+//		for {
+//			databases, err := admin.ListDatabases(ctx, opts)
+//			if err != nil {
+//				return nil, fmt.Errorf("admin.ListDatabases failed: %w", err)
+//			}
+//			all = append(all, databases...)
+//			if len(databases) < pageSize {
+//				break
+//			}
+//			// Set up cursor for next page
+//			opts.SetStartingAfter(databases[len(databases)-1].ID)
+//		}
+//		return all, nil
+//	}
+func (a *Admin) ListDatabases(ctx context.Context, opts ...options.Builder[options.ListDatabasesOptions]) ([]Database, error) {
+	merged, err := options.MergeOptions(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := a.createCommand(http.MethodGet, "/databases", nil)
+	if merged != nil {
+		if merged.Include != nil {
+			cmd.withQueryParam("include", string(*merged.Include))
+		}
+		if merged.Provider != nil {
+			cmd.withQueryParam("provider", string(*merged.Provider))
+		}
+		if merged.Limit != nil {
+			cmd.withQueryParam("limit", fmt.Sprintf("%d", *merged.Limit))
+		}
+		if merged.StartingAfter != nil {
+			cmd.withQueryParam("starting_after", *merged.StartingAfter)
+		}
+	}
+
+	resp, err := cmd.execute(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var databases []Database
+	if err := json.Unmarshal(resp.Body, &databases); err != nil {
+		return nil, fmt.Errorf("failed to parse databases response: %w", err)
+	}
+
+	return databases, nil
+}
+
 // GetDatabase retrieves information about a specific database.
 //
 // Example:

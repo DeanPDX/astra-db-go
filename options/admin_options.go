@@ -70,6 +70,135 @@ func (b *FindAvailableRegionsOptionsBuilder) SetFilterByOrg(v bool) *FindAvailab
 	return b
 }
 
+// DatabaseInclude controls which databases are returned by ListDatabases based on status.
+type DatabaseInclude string
+
+const (
+	// DatabaseIncludeNonTerminated returns all databases that are not terminated (default).
+	DatabaseIncludeNonTerminated DatabaseInclude = "nonterminated"
+	// DatabaseIncludeAll returns all databases regardless of status.
+	DatabaseIncludeAll DatabaseInclude = "all"
+	// DatabaseIncludeActive returns only active databases.
+	DatabaseIncludeActive DatabaseInclude = "active"
+	// DatabaseIncludePending returns only pending databases.
+	DatabaseIncludePending DatabaseInclude = "pending"
+	// DatabaseIncludePreparing returns only databases that are preparing.
+	DatabaseIncludePreparing DatabaseInclude = "preparing"
+	// DatabaseIncludePrepared returns only prepared databases.
+	DatabaseIncludePrepared DatabaseInclude = "prepared"
+	// DatabaseIncludeInitializing returns only databases that are initializing.
+	DatabaseIncludeInitializing DatabaseInclude = "initializing"
+	// DatabaseIncludeParked returns only parked (hibernated) databases.
+	DatabaseIncludeParked DatabaseInclude = "parked"
+	// DatabaseIncludeParking returns only databases that are being parked.
+	DatabaseIncludeParking DatabaseInclude = "parking"
+	// DatabaseIncludeUnparking returns only databases that are being unparked.
+	DatabaseIncludeUnparking DatabaseInclude = "unparking"
+	// DatabaseIncludeTerminating returns only databases that are being terminated.
+	DatabaseIncludeTerminating DatabaseInclude = "terminating"
+	// DatabaseIncludeTerminated returns only terminated databases.
+	DatabaseIncludeTerminated DatabaseInclude = "terminated"
+	// DatabaseIncludeResizing returns only databases that are being resized.
+	DatabaseIncludeResizing DatabaseInclude = "resizing"
+	// DatabaseIncludeError returns only databases in an error state.
+	DatabaseIncludeError DatabaseInclude = "error"
+	// DatabaseIncludeMaintenance returns only databases under maintenance.
+	DatabaseIncludeMaintenance DatabaseInclude = "maintenance"
+	// DatabaseIncludeSuspended returns only suspended databases.
+	DatabaseIncludeSuspended DatabaseInclude = "suspended"
+	// DatabaseIncludeSuspending returns only databases that are being suspended.
+	DatabaseIncludeSuspending DatabaseInclude = "suspending"
+)
+
+// CloudProviderFilter controls which databases are returned by ListDatabases based on cloud provider.
+type CloudProviderFilter string
+
+const (
+	// CloudProviderAll returns databases from all cloud providers (default).
+	CloudProviderAll CloudProviderFilter = "ALL"
+	// CloudProviderGCP returns only GCP databases.
+	CloudProviderGCP CloudProviderFilter = "GCP"
+	// CloudProviderAWS returns only AWS databases.
+	CloudProviderAWS CloudProviderFilter = "AWS"
+	// CloudProviderAzure returns only Azure databases.
+	CloudProviderAzure CloudProviderFilter = "AZURE"
+)
+
+// ListDatabasesOptions represents options for the ListDatabases operation.
+type ListDatabasesOptions struct {
+	// Include filters databases by status. Defaults to "nonterminated".
+	Include *DatabaseInclude
+	// Provider filters databases by cloud provider. Defaults to "ALL".
+	Provider *CloudProviderFilter
+	// Limit is the maximum number of databases to return (1-100). Defaults to 25.
+	Limit *int
+	// StartingAfter is a database ID to use with pagination. Pass the DB ID of the
+	// last item on the previous page to get the next page.
+	StartingAfter *string
+}
+
+// Validate implements the Validator interface for ListDatabasesOptions.
+func (o ListDatabasesOptions) Validate() error {
+	return nil
+}
+
+// List implements Builder[ListDatabasesOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[ListDatabasesOptions].
+func (o *ListDatabasesOptions) List() []func(*ListDatabasesOptions) {
+	return []func(*ListDatabasesOptions){
+		func(target *ListDatabasesOptions) {
+			copyNonNilFields(o, target)
+		},
+	}
+}
+
+// ListDatabasesOptionsBuilder is a builder for ListDatabasesOptions.
+type ListDatabasesOptionsBuilder struct {
+	Opts []func(*ListDatabasesOptions)
+}
+
+// ListDatabases creates a new ListDatabasesOptionsBuilder.
+func ListDatabases() *ListDatabasesOptionsBuilder {
+	return &ListDatabasesOptionsBuilder{}
+}
+
+// List implements Builder[ListDatabasesOptions].
+func (b *ListDatabasesOptionsBuilder) List() []func(*ListDatabasesOptions) {
+	return b.Opts
+}
+
+// SetInclude filters databases by status.
+func (b *ListDatabasesOptionsBuilder) SetInclude(v DatabaseInclude) *ListDatabasesOptionsBuilder {
+	b.Opts = append(b.Opts, func(o *ListDatabasesOptions) {
+		o.Include = &v
+	})
+	return b
+}
+
+// SetProvider filters databases by cloud provider.
+func (b *ListDatabasesOptionsBuilder) SetProvider(v CloudProviderFilter) *ListDatabasesOptionsBuilder {
+	b.Opts = append(b.Opts, func(o *ListDatabasesOptions) {
+		o.Provider = &v
+	})
+	return b
+}
+
+// SetLimit sets the maximum number of databases to return (1-100).
+func (b *ListDatabasesOptionsBuilder) SetLimit(v int) *ListDatabasesOptionsBuilder {
+	b.Opts = append(b.Opts, func(o *ListDatabasesOptions) {
+		o.Limit = &v
+	})
+	return b
+}
+
+// SetStartingAfter sets the pagination cursor. Results will start after this database ID.
+func (b *ListDatabasesOptionsBuilder) SetStartingAfter(v string) *ListDatabasesOptionsBuilder {
+	b.Opts = append(b.Opts, func(o *ListDatabasesOptions) {
+		o.StartingAfter = &v
+	})
+	return b
+}
+
 // CreateDatabaseOptions represents options for the CreateDatabase operation.
 type CreateDatabaseOptions struct {
 	// Keyspace is the initial keyspace name. Defaults to "default_keyspace" if not specified.
