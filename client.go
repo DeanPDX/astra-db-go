@@ -73,8 +73,9 @@ func (c *DataAPIClient) Database(endpoint string, opts ...options.APIOption) *Db
 //	regions, err := admin.FindAvailableRegions(ctx)
 func (c *DataAPIClient) Admin(opts ...options.APIOption) *Admin {
 	return &Admin{
-		client:     c,
-		options:    options.NewAPIOptions(opts...),
-		apiVersion: DefaultAdminAPIVersion,
+		client:      c,
+		options:     options.NewAPIOptions(opts...),
+		apiVersion:  DefaultAdminAPIVersion,
+		environment: EnvironmentProd,
 	}
 }
