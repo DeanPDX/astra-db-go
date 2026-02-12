@@ -24,12 +24,16 @@ import (
 	"github.com/datastax/astra-db-go/options"
 )
 
-// DbAdmin provides admin operations for a specific Astra database.
-// Obtain a DbAdmin from [Admin.CreateDatabase] or [Admin.DbAdmin].
+// DbAdmin provides admin operations for a specific Astra database
+// via the DevOps API.
+// Obtain a DbAdmin from [AstraAdmin.CreateDatabase] or [AstraAdmin.DbAdmin].
 //
 // Example:
 //
-//	admin := client.Admin()
+//	admin, err := client.Admin()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //	dbAdmin, err := admin.CreateDatabase(ctx, astradb.DatabaseInfo{
 //	    Name:          "my-database",
 //	    CloudProvider: "gcp",
@@ -42,7 +46,7 @@ import (
 //	keyspaces, err := dbAdmin.ListKeyspaces(ctx)
 type DbAdmin struct {
 	id    string
-	admin *Admin
+	admin *AstraAdmin
 }
 
 // ID returns the database ID.

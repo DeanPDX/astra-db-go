@@ -50,6 +50,10 @@ type APIOptions struct {
 	// WarningHandler is called for each warning received from the API.
 	// Set this at any level (Client, Database, Collection/Table, or Command).
 	WarningHandler WarningHandler
+
+	// Environment is the deployment environment (e.g., prod, dev, hcd).
+	// Determines which admin paths are available.
+	Environment *Environment
 }
 
 // TimeoutOptions contains timeout configuration for API operations.
@@ -167,6 +171,11 @@ func Merge(layers ...*APIOptions) *APIOptions {
 		if layer.WarningHandler != nil {
 			result.WarningHandler = layer.WarningHandler
 		}
+
+		// Merge environment
+		if layer.Environment != nil {
+			result.Environment = layer.Environment
+		}
 	}
 
 	return result
@@ -258,6 +267,13 @@ func WithTimeout(d time.Duration) APIOption {
 	return WithRequestTimeout(d)
 }
 
+// WithEnvironment sets the deployment environment.
+func WithEnvironment(env Environment) APIOption {
+	return func(o *APIOptions) {
+		o.Environment = &env
+	}
+}
+
 // WithWarningHandler sets a callback to be invoked for each API warning.
 // The handler is called synchronously before the method returns.
 //
@@ -310,6 +326,14 @@ func (o *APIOptions) GetHTTPClient() *http.Client {
 		return &http.Client{}
 	}
 	return o.HTTPClient
+}
+
+// GetEnvironment returns the environment or EnvironmentProd if not set.
+func (o *APIOptions) GetEnvironment() Environment {
+	if o == nil || o.Environment == nil {
+		return EnvironmentProd
+	}
+	return *o.Environment
 }
 
 // GetRequestTimeout returns the request timeout or 30s if not set.

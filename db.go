@@ -17,6 +17,8 @@ package astradb
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 
 	"github.com/datastax/astra-db-go/options"
 )
@@ -102,4 +104,40 @@ func (d *Db) DropCollection(ctx context.Context, name string) error {
 	cmd := newCmd(d, "deleteCollection", payload)
 	_, _, err := cmd.Execute(ctx)
 	return err
+}
+
+// DatabaseAdmin returns a DatabaseAdmin for managing keyspaces on this database.
+// The concrete implementation depends on the environment:
+//   - Astra environments return an [DbAdmin] (DevOps API)
+//   - Non-Astra environments return a [DataAPIDatabaseAdmin] (Data API)
+func (d *Db) DatabaseAdmin() (DatabaseAdmin, error) {
+	// Astra environments use the DevOps API.
+	if d.client.environment.IsAstra() {
+		admin, err := d.client.Admin()
+		if err != nil {
+			return nil, err
+		}
+		id, err := parseAstraEndpoint(d.endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse database ID from endpoint %q: %w", d.endpoint, err)
+		}
+		return admin.DbAdmin(id), nil
+	}
+	// Non-astra environments use the Data API.
+	return &DataAPIDatabaseAdmin{db: d}, nil
+}
+
+// parseAstraEndpoint extracts the database UUID from an Astra Data API endpoint.
+// The expected format is: https://{uuid}-{region}.apps.astra.datastax.com
+// The UUID is always 36 characters (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+func parseAstraEndpoint(endpoint string) (string, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("invalid endpoint URL: %w", err)
+	}
+	host := u.Hostname()
+	if len(host) < 36 {
+		return "", fmt.Errorf("hostname too short to contain a UUID: %s", host)
+	}
+	return host[:36], nil
 }

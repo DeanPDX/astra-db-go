@@ -14,7 +14,11 @@
 
 package astradb
 
-import "github.com/datastax/astra-db-go/options"
+import (
+	"fmt"
+
+	"github.com/datastax/astra-db-go/options"
+)
 
 // DataAPIClient is a client for interacting with an Astra DB database.
 // Construct a new client using [NewClient].
@@ -22,7 +26,8 @@ import "github.com/datastax/astra-db-go/options"
 // Options set on the client are inherited by all databases, collections,
 // tables, and commands created from it, unless overridden at a lower level.
 type DataAPIClient struct {
-	options *options.APIOptions
+	options     *options.APIOptions
+	environment options.Environment
 }
 
 // NewClient returns a new DataAPIClient with the given options.
@@ -32,9 +37,19 @@ type DataAPIClient struct {
 //	client := astradb.NewClient(
 //	    options.WithToken("AstraCS:..."),
 //	)
+//
+// Example with environment:
+//
+//	client := astradb.NewClient(
+//	    options.WithToken("AstraCS:..."),
+//	    options.WithEnvironment(options.EnvironmentHCD),
+//	)
 func NewClient(opts ...options.APIOption) *DataAPIClient {
+	apiOpts := options.NewAPIOptions(opts...)
+	env := apiOpts.GetEnvironment()
 	return &DataAPIClient{
-		options: options.NewAPIOptions(opts...),
+		options:     apiOpts,
+		environment: env,
 	}
 }
 
@@ -63,19 +78,26 @@ func (c *DataAPIClient) Database(endpoint string, opts ...options.APIOption) *Db
 	}
 }
 
-// Admin returns an Admin handle for DevOps API operations.
+// Admin returns an AstraAdmin handle for DevOps API operations.
+// Returns an error if the client's environment is not an Astra environment.
 //
-// Options set on the client are inherited by the Admin.
+// Options set on the client are inherited by the AstraAdmin.
 //
 // Example:
 //
-//	admin := client.Admin()
+//	admin, err := client.Admin()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //	regions, err := admin.FindAvailableRegions(ctx)
-func (c *DataAPIClient) Admin(opts ...options.APIOption) *Admin {
-	return &Admin{
+func (c *DataAPIClient) Admin(opts ...options.APIOption) (*AstraAdmin, error) {
+	if !c.environment.IsAstra() {
+		return nil, fmt.Errorf("Admin is only available in Astra environments (current: %s)", c.environment)
+	}
+	return &AstraAdmin{
 		client:      c,
 		options:     options.NewAPIOptions(opts...),
 		apiVersion:  DefaultAdminAPIVersion,
-		environment: EnvironmentProd,
-	}
+		environment: c.environment,
+	}, nil
 }

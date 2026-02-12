@@ -13,7 +13,7 @@ import (
 )
 
 type adminCommand struct {
-	admin       *Admin
+	admin       *AstraAdmin
 	method      string
 	path        string
 	payload     any
@@ -21,7 +21,7 @@ type adminCommand struct {
 }
 
 func (ac *adminCommand) url() (string, error) {
-	baseURL, err := url.JoinPath(ac.admin.environment.URL(), ac.admin.apiVersion, ac.path)
+	baseURL, err := url.JoinPath(ac.admin.environment.DevOpsURL(), ac.admin.apiVersion, ac.path)
 	if err != nil {
 		return "", err
 	}

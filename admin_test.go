@@ -117,9 +117,12 @@ func TestFindAvailableRegionsOptionsBuilder(t *testing.T) {
 }
 
 func TestAdminResolveOptions(t *testing.T) {
-	// Verify that Admin inherits options from client
+	// Verify that AstraAdmin inherits options from client
 	client := NewClient(options.WithToken("client-token"))
-	admin := client.Admin()
+	admin, err := client.Admin()
+	if err != nil {
+		t.Fatalf("Admin() returned unexpected error: %v", err)
+	}
 
 	opts := admin.resolveOptions()
 	if opts.GetToken() != "client-token" {
@@ -128,9 +131,12 @@ func TestAdminResolveOptions(t *testing.T) {
 }
 
 func TestAdminOptionOverride(t *testing.T) {
-	// Verify that Admin-level options override client options
+	// Verify that AstraAdmin-level options override client options
 	client := NewClient(options.WithToken("client-token"))
-	admin := client.Admin(options.WithToken("admin-token"))
+	admin, err := client.Admin(options.WithToken("admin-token"))
+	if err != nil {
+		t.Fatalf("Admin() returned unexpected error: %v", err)
+	}
 
 	opts := admin.resolveOptions()
 	if opts.GetToken() != "admin-token" {
@@ -161,9 +167,12 @@ curl -sS -L -X GET "https://api.astra.datastax.com/v2/regions/serverless?region-
 */
 
 func TestSTuff(t *testing.T) {
-	// Verify that Admin inherits options from client
+	// Verify that AstraAdmin inherits options from client
 	client := NewClient(options.WithToken("client-token"))
-	admin := client.Admin()
+	admin, err := client.Admin()
+	if err != nil {
+		t.Fatalf("Admin() returned unexpected error: %v", err)
+	}
 	cmd := admin.createCommand("GET", "/regions/serverless", nil)
 	url, err := cmd.url()
 	if err != nil {
@@ -172,6 +181,17 @@ func TestSTuff(t *testing.T) {
 	expectedURL := "https://api.astra.datastax.com/v2/regions/serverless"
 	if url != expectedURL {
 		t.Errorf("expected: %s\ngot: %s", expectedURL, url)
+	}
+}
+
+func TestAdminNotAvailableForNonAstra(t *testing.T) {
+	client := NewClient(
+		options.WithToken("token"),
+		options.WithEnvironment(options.EnvironmentHCD),
+	)
+	_, err := client.Admin()
+	if err == nil {
+		t.Error("expected error for non-Astra environment, got nil")
 	}
 }
 

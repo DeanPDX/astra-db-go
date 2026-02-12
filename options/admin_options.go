@@ -326,11 +326,14 @@ func (b *DropDatabaseOptionsBuilder) SetPollInterval(v time.Duration) *DropDatab
 // CreateKeyspaceOptions represents options for the CreateKeyspace operation.
 type CreateKeyspaceOptions struct {
 	// Blocking controls whether to wait for the keyspace to become visible.
-	// Defaults to true.
+	// Defaults to true. Only used by the Astra (DevOps API) path.
 	Blocking *bool
 	// PollInterval is how often to check whether the keyspace exists when blocking.
-	// Defaults to DefaultKeyspacePollInterval (1 second).
+	// Defaults to DefaultKeyspacePollInterval (1 second). Only used by the Astra (DevOps API) path.
 	PollInterval *time.Duration
+	// ReplicationFactor sets the replication factor for the keyspace.
+	// Only used by the Data API path (non-Astra environments).
+	ReplicationFactor *int
 }
 
 // Validate implements the Validator interface for CreateKeyspaceOptions.
@@ -376,6 +379,15 @@ func (b *CreateKeyspaceOptionsBuilder) SetBlocking(v bool) *CreateKeyspaceOption
 func (b *CreateKeyspaceOptionsBuilder) SetPollInterval(v time.Duration) *CreateKeyspaceOptionsBuilder {
 	b.Opts = append(b.Opts, func(o *CreateKeyspaceOptions) {
 		o.PollInterval = &v
+	})
+	return b
+}
+
+// SetReplicationFactor sets the replication factor for the keyspace.
+// Only used by the Data API path (non-Astra environments).
+func (b *CreateKeyspaceOptionsBuilder) SetReplicationFactor(v int) *CreateKeyspaceOptionsBuilder {
+	b.Opts = append(b.Opts, func(o *CreateKeyspaceOptions) {
+		o.ReplicationFactor = &v
 	})
 	return b
 }

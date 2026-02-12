@@ -29,40 +29,17 @@ import (
 // DefaultAdminAPIVersion is the default version of the Astra DevOps API.
 const DefaultAdminAPIVersion = "v2"
 
-// Environment represents the Astra environment.
-type Environment string
-
-const (
-	// EnvironmentDev is the development environment.
-	EnvironmentDev Environment = "dev"
-	// EnvironmentTest is the test environment.
-	EnvironmentTest Environment = "test"
-	// EnvironmentProd is the production environment.
-	EnvironmentProd Environment = "prod"
-)
-
-// URL returns the API URL for the environment.
-func (e Environment) URL() string {
-	switch e {
-	case EnvironmentDev:
-		return "https://api.dev.cloud.datastax.com"
-	case EnvironmentTest:
-		return "https://api.test.cloud.datastax.com"
-	default:
-		return "https://api.astra.datastax.com" // production by default
-	}
-}
-
-// Admin provides access to Astra DevOps API operations.
-// Obtain an Admin instance from DataAPIClient.Admin().
-type Admin struct {
+// AstraAdmin provides access to Astra DevOps API operations.
+// Obtain an AstraAdmin instance from DataAPIClient.Admin().
+// Only valid for Astra environments.
+type AstraAdmin struct {
 	client      *DataAPIClient
 	options     *options.APIOptions
 	apiVersion  string
-	environment Environment
+	environment options.Environment
 }
 
-func (a *Admin) createCommand(method string, path string, payload any) *adminCommand {
+func (a *AstraAdmin) createCommand(method string, path string, payload any) *adminCommand {
 	return &adminCommand{
 		admin:       a,
 		method:      method,
@@ -144,8 +121,8 @@ type DatabaseDetails struct {
 	DbType string `json:"dbType"`
 }
 
-// resolveOptions merges Admin options with client options.
-func (a *Admin) resolveOptions() *options.APIOptions {
+// resolveOptions merges AstraAdmin options with client options.
+func (a *AstraAdmin) resolveOptions() *options.APIOptions {
 	var clientOpts *options.APIOptions
 	if a.client != nil {
 		clientOpts = a.client.Options()
@@ -157,14 +134,14 @@ func (a *Admin) resolveOptions() *options.APIOptions {
 //
 // Example - get all regions:
 //
-//	admin := client.Admin()
+//	admin, err := client.Admin()
 //	regions, err := admin.FindAvailableRegions(ctx)
 //
 // Example - filter by organization access:
 //
 //	regions, err := admin.FindAvailableRegions(ctx,
 //	    options.FindAvailableRegions().SetFilterByOrg(true))
-func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Builder[options.FindAvailableRegionsOptions]) ([]Region, error) {
+func (a *AstraAdmin) FindAvailableRegions(ctx context.Context, opts ...options.Builder[options.FindAvailableRegionsOptions]) ([]Region, error) {
 	// Merge options
 	merged, err := options.MergeOptions(opts...)
 	if err != nil {
@@ -203,7 +180,7 @@ func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Builde
 //
 // Example - list databases:
 //
-//	admin := client.Admin()
+//	admin, err := client.Admin()
 //	databases, err := admin.ListDatabases(ctx)
 //
 // Example - list only active GCP databases:
@@ -215,7 +192,7 @@ func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Builde
 //
 // Example - paginate through results and retrieve all databases:
 //
-//	func listAll(ctx context.Context, admin *astradb.Admin) ([]astradb.Database, error) {
+//	func listAll(ctx context.Context, admin *astradb.AstraAdmin) ([]astradb.Database, error) {
 //		var all []astradb.Database
 //		pageSize := 100
 //		opts := options.ListDatabases().SetInclude(options.DatabaseIncludeAll).SetLimit(pageSize)
@@ -233,7 +210,7 @@ func (a *Admin) FindAvailableRegions(ctx context.Context, opts ...options.Builde
 //		}
 //		return all, nil
 //	}
-func (a *Admin) ListDatabases(ctx context.Context, opts ...options.Builder[options.ListDatabasesOptions]) ([]Database, error) {
+func (a *AstraAdmin) ListDatabases(ctx context.Context, opts ...options.Builder[options.ListDatabasesOptions]) ([]Database, error) {
 	merged, err := options.MergeOptions(opts...)
 	if err != nil {
 		return nil, err
@@ -272,13 +249,13 @@ func (a *Admin) ListDatabases(ctx context.Context, opts ...options.Builder[optio
 //
 // Example:
 //
-//	admin := client.Admin()
+//	admin, err := client.Admin()
 //	db, err := admin.GetDatabase(ctx, "database-id")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //	fmt.Println("Status:", db.Status)
-func (a *Admin) GetDatabase(ctx context.Context, databaseID string) (*Database, error) {
+func (a *AstraAdmin) GetDatabase(ctx context.Context, databaseID string) (*Database, error) {
 	cmd := a.createCommand(http.MethodGet, "/databases/"+databaseID, nil)
 	resp, err := cmd.execute(ctx)
 	if err != nil {
@@ -294,7 +271,7 @@ func (a *Admin) GetDatabase(ctx context.Context, databaseID string) (*Database, 
 }
 
 // extractDevOpsError handles error responses from the DevOps API.
-func (a *Admin) extractDevOpsError(statusCode int, body []byte) error {
+func (a *AstraAdmin) extractDevOpsError(statusCode int, body []byte) error {
 	// Try to parse as a structured error
 	var devOpsErr struct {
 		Message string   `json:"message"`
@@ -340,14 +317,14 @@ type createDatabaseRequest struct {
 //
 //	dbAdmin := admin.DbAdmin("database-id")
 //	keyspaces, err := dbAdmin.ListKeyspaces(ctx)
-func (a *Admin) DbAdmin(databaseID string) *DbAdmin {
+func (a *AstraAdmin) DbAdmin(databaseID string) *DbAdmin {
 	return &DbAdmin{
 		id:    databaseID,
 		admin: a,
 	}
 }
 
-// CreateDatabase creates a new serverless vector database and returns a
+// CreateDatabase creates a new serverless vector database and returns an
 // [DbAdmin] for performing admin operations on it.
 //
 // The DevOps API endpoint is: POST https://api.astra.datastax.com/v2/databases
@@ -358,7 +335,7 @@ func (a *Admin) DbAdmin(databaseID string) *DbAdmin {
 //
 // Example - create a database (blocking by default):
 //
-//	admin := client.Admin()
+//	admin, err := client.Admin()
 //	dbAdmin, err := admin.CreateDatabase(ctx, astradb.DatabaseInfo{
 //	    Name:          "my-database",
 //	    CloudProvider: "gcp",
@@ -382,7 +359,7 @@ func (a *Admin) DbAdmin(databaseID string) *DbAdmin {
 //	}, options.CreateDatabase().
 //	    SetKeyspace("my_keyspace").
 //	    SetPollInterval(5 * time.Second))
-func (a *Admin) CreateDatabase(ctx context.Context, info DatabaseInfo, opts ...options.Builder[options.CreateDatabaseOptions]) (*DbAdmin, error) {
+func (a *AstraAdmin) CreateDatabase(ctx context.Context, info DatabaseInfo, opts ...options.Builder[options.CreateDatabaseOptions]) (*DbAdmin, error) {
 	// Merge options
 	merged, err := options.MergeOptions(opts...)
 	if err != nil {
@@ -470,14 +447,14 @@ func (a *Admin) CreateDatabase(ctx context.Context, info DatabaseInfo, opts ...o
 //
 // Example - drop database (blocking by default):
 //
-//	admin := client.Admin()
-//	err := admin.DropDatabase(ctx, "database-id")
+//	admin, err := client.Admin()
+//	err = admin.DropDatabase(ctx, "database-id")
 //
 // Example - drop without waiting:
 //
 //	err := admin.DropDatabase(ctx, "database-id",
 //	    options.DropDatabase().SetBlocking(false))
-func (a *Admin) DropDatabase(ctx context.Context, databaseID string, opts ...options.Builder[options.DropDatabaseOptions]) error {
+func (a *AstraAdmin) DropDatabase(ctx context.Context, databaseID string, opts ...options.Builder[options.DropDatabaseOptions]) error {
 	// Merge options
 	merged, err := options.MergeOptions(opts...)
 	if err != nil {
