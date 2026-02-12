@@ -203,6 +203,8 @@ func TestExtractDevopsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
+	// TODO: switch to errors.AsType when it becomes more widely available:
+	// https://go.dev/doc/go1.26#errorspkgerrors
 	var errs DataAPIErrors
 	if !errors.As(err, &errs) {
 		t.Fatalf("expecting error of type DataAPIErrors. Got %s", err)
