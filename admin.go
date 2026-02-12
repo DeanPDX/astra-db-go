@@ -270,21 +270,6 @@ func (a *AstraAdmin) GetDatabase(ctx context.Context, databaseID string) (*Datab
 	return &db, nil
 }
 
-// extractDevOpsError handles error responses from the DevOps API.
-func (a *AstraAdmin) extractDevOpsError(statusCode int, body []byte) error {
-	// Try to parse as a structured error
-	var devOpsErr struct {
-		Message string   `json:"message"`
-		Errors  []string `json:"errors"`
-	}
-	if err := json.Unmarshal(body, &devOpsErr); err == nil && devOpsErr.Message != "" {
-		return fmt.Errorf("DevOps API error (status %d): %s", statusCode, devOpsErr.Message)
-	}
-
-	// Fallback to raw body
-	return fmt.Errorf("DevOps API error (status %d): %s", statusCode, string(body))
-}
-
 // DatabaseInfo contains the required parameters for creating a database.
 type DatabaseInfo struct {
 	// Name is the database name. Must start and end with a letter or number.

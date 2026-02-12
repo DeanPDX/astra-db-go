@@ -125,7 +125,7 @@ func (ac *adminCommand) execute(ctx context.Context) (*adminResponse, error) {
 
 	// Handle error responses
 	if resp.StatusCode >= 400 {
-		return nil, ac.admin.extractDevOpsError(resp.StatusCode, body)
+		return nil, extractDevOpsError(resp.StatusCode, body)
 	}
 
 	return &adminResponse{
@@ -133,4 +133,17 @@ func (ac *adminCommand) execute(ctx context.Context) (*adminResponse, error) {
 		Headers:    resp.Header,
 		StatusCode: resp.StatusCode,
 	}, nil
+}
+
+// extractDevOpsError handles error responses from the DevOps API.
+func extractDevOpsError(statusCode int, body []byte) error {
+	// Try to parse as a structured error
+	var resp apiResponse
+	// Ignoring errors here because we want to fallback to the raw body if we can't parse
+	json.Unmarshal(body, &resp)
+	if len(resp.Errors) > 0 {
+		return resp.Errors
+	}
+	// Fallback to raw body
+	return fmt.Errorf("DevOps API error (status %d): %s", statusCode, string(body))
 }

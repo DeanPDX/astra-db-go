@@ -16,6 +16,7 @@ package astradb
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/datastax/astra-db-go/options"
@@ -195,8 +196,22 @@ func TestAdminNotAvailableForNonAstra(t *testing.T) {
 	}
 }
 
-/*
-curl -sS -L -X GET "https://api.astra.datastax.com/v2/databases?include=STRING&provider=STRING&starting_after=STRING&limit=INTEGER" \
---header "Authorization: Bearer APPLICATION_TOKEN" \
---header "Content-Type: application/json"
-*/
+func TestExtractDevopsError(t *testing.T) {
+	// Test that a DevOps error response is properly extracted and parsed
+	errorBody := "{\"errors\":[{\"ID\":340002,\"message\":\"no bearer token in request\"}]}"
+	err := extractDevOpsError(401, []byte(errorBody))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var errs DataAPIErrors
+	if !errors.As(err, &errs) {
+		t.Fatalf("expecting error of type DataAPIErrors. Got %s", err)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("expecting len(errs) to = 1. Got %d", len(errs))
+	}
+	expected := "no bearer token in request"
+	if errs[0].Message != expected {
+		t.Fatalf("expecting Message %q. got %q", expected, errs[0].Message)
+	}
+}
