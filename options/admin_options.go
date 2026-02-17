@@ -379,3 +379,56 @@ func (b *CreateKeyspaceOptionsBuilder) SetReplicationFactor(v int) *CreateKeyspa
 	})
 	return b
 }
+
+// DropKeyspaceOptions represents options for the DropKeyspace operation.
+type DropKeyspaceOptions struct {
+	// Blocking controls whether to wait for the keyspace to be fully terminated.
+	// Defaults to true.
+	Blocking *bool
+	// PollInterval is how often to check the keyspace status when blocking.
+	// Defaults to DefaultKeyspacePollInterval (1 second).
+	PollInterval *time.Duration
+}
+
+// Validate implements the Validator interface for DropKeyspaceOptions.
+func (o DropKeyspaceOptions) Validate() error {
+	return nil
+}
+
+// List implements Builder[DropKeyspaceOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[DropKeyspaceOptions].
+func (o *DropKeyspaceOptions) List() []func(*DropKeyspaceOptions) {
+	return NoopBuilder(o)
+}
+
+// DropKeyspaceOptionsBuilder is a builder for DropKeyspaceOptions.
+type DropKeyspaceOptionsBuilder struct {
+	Opts []func(*DropKeyspaceOptions)
+}
+
+// DropKeyspace creates a new DropKeyspaceOptionsBuilder.
+func DropKeyspace() *DropKeyspaceOptionsBuilder {
+	return &DropKeyspaceOptionsBuilder{}
+}
+
+// List implements Builder[DropKeyspaceOptions].
+func (b *DropKeyspaceOptionsBuilder) List() []func(*DropKeyspaceOptions) {
+	return b.Opts
+}
+
+// SetBlocking controls whether to wait for the keyspace to be fully terminated.
+// Defaults to true if not specified.
+func (b *DropKeyspaceOptionsBuilder) SetBlocking(v bool) *DropKeyspaceOptionsBuilder {
+	b.Opts = append(b.Opts, func(o *DropKeyspaceOptions) {
+		o.Blocking = &v
+	})
+	return b
+}
+
+// SetPollInterval sets how often to check the keyspace status when blocking.
+func (b *DropKeyspaceOptionsBuilder) SetPollInterval(v time.Duration) *DropKeyspaceOptionsBuilder {
+	b.Opts = append(b.Opts, func(o *DropKeyspaceOptions) {
+		o.PollInterval = &v
+	})
+	return b
+}

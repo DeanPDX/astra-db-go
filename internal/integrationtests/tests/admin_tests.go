@@ -179,7 +179,7 @@ func AdminKeyspaceCreateListDrop(e *harness.TestEnv) error {
 	// Create a test keyspace with a unique name
 	ksName := fmt.Sprintf("go_sdk_test_ks_%d", time.Now().UnixMilli())
 	slog.Info("Creating keyspace", "name", ksName)
-	err = dbAdmin.CreateKeyspace(ctx, ksName)
+	err = dbAdmin.CreateKeyspace(ctx, ksName, options.CreateKeyspace().SetBlocking(true))
 	if err != nil {
 		return fmt.Errorf("CreateKeyspace failed: %w", err)
 	}

@@ -16,10 +16,7 @@ package astradb
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/datastax/astra-db-go/options"
 )
@@ -127,27 +124,13 @@ func (d *AstraDbAdmin) CreateKeyspace(ctx context.Context, keyspace string, opts
 		pollInterval = *merged.PollInterval
 	}
 
-	slog.Debug("Waiting for keyspace to be created", "keyspace", keyspace, "pollInterval", pollInterval)
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			keyspaces, err := d.ListKeyspaces(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to list keyspaces while polling: %w", err)
-			}
-			for _, ks := range keyspaces {
-				if ks == keyspace {
-					return nil
-				}
-			}
-			slog.Debug("Keyspace not yet visible", "keyspace", keyspace)
-		}
+	awaitOpts := AwaitStatusOptions{
+		PollInterval: pollInterval,
+		Target:       DatabaseStatusActive,
+		LegalStates:  []DatabaseStatus{DatabaseStatusMaintenance},
 	}
+	err = d.admin.awaitStatus(ctx, d.id, awaitOpts)
+	return err
 }
 
 // DropKeyspace drops a keyspace from this database.
@@ -155,8 +138,37 @@ func (d *AstraDbAdmin) CreateKeyspace(ctx context.Context, keyspace string, opts
 // Example:
 //
 //	err := dbAdmin.DropKeyspace(ctx, "my_keyspace")
-func (d *AstraDbAdmin) DropKeyspace(ctx context.Context, keyspace string) error {
+func (d *AstraDbAdmin) DropKeyspace(ctx context.Context, keyspace string, opts ...options.Builder[options.DropKeyspaceOptions]) error {
+	merged, err := options.MergeOptions(opts...)
+	if err != nil {
+		return err
+	}
+
 	cmd := d.admin.createCommand(http.MethodDelete, "/databases/"+d.id+"/keyspaces/"+keyspace, nil)
-	_, err := cmd.execute(ctx)
+	_, err = cmd.execute(ctx)
+	if err != nil {
+		return err
+	}
+
+	blocking := true
+	if merged != nil && merged.Blocking != nil {
+		blocking = *merged.Blocking
+	}
+
+	if !blocking {
+		return nil
+	}
+
+	pollInterval := options.DefaultKeyspacePollInterval
+	if merged != nil && merged.PollInterval != nil {
+		pollInterval = *merged.PollInterval
+	}
+
+	awaitOpts := AwaitStatusOptions{
+		PollInterval: pollInterval,
+		Target:       DatabaseStatusActive,
+		LegalStates:  []DatabaseStatus{DatabaseStatusMaintenance},
+	}
+	err = d.admin.awaitStatus(ctx, d.id, awaitOpts)
 	return err
 }

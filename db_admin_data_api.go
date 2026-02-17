@@ -63,7 +63,7 @@ func (d *DataAPIDatabaseAdmin) CreateKeyspace(ctx context.Context, keyspace stri
 		Replication replicationOptions `json:"replication"`
 	}
 	type createKeyspacePayload struct {
-		Name    string                       `json:"name"`
+		Name    string                        `json:"name"`
 		Options *createKeyspacePayloadOptions `json:"options,omitempty"`
 	}
 
@@ -83,7 +83,7 @@ func (d *DataAPIDatabaseAdmin) CreateKeyspace(ctx context.Context, keyspace stri
 }
 
 // DropKeyspace drops a keyspace via the Data API.
-func (d *DataAPIDatabaseAdmin) DropKeyspace(ctx context.Context, keyspace string) error {
+func (d *DataAPIDatabaseAdmin) DropKeyspace(ctx context.Context, keyspace string, opts ...options.Builder[options.DropKeyspaceOptions]) error {
 	payload := struct {
 		Name string `json:"name"`
 	}{Name: keyspace}

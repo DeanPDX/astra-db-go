@@ -27,7 +27,7 @@ import (
 type DatabaseAdmin interface {
 	ListKeyspaces(ctx context.Context) ([]string, error)
 	CreateKeyspace(ctx context.Context, keyspace string, opts ...options.Builder[options.CreateKeyspaceOptions]) error
-	DropKeyspace(ctx context.Context, keyspace string) error
+	DropKeyspace(ctx context.Context, keyspace string, opts ...options.Builder[options.DropKeyspaceOptions]) error
 }
 
 // Compile-time interface checks
