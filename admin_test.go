@@ -188,11 +188,11 @@ func TestSTuff(t *testing.T) {
 func TestAdminNotAvailableForNonAstra(t *testing.T) {
 	client := NewClient(
 		options.WithToken("token"),
-		options.WithEnvironment(options.EnvironmentHCD),
+		options.WithDataAPIBackend(options.DataAPIBackendHCD),
 	)
 	_, err := client.Admin()
 	if err == nil {
-		t.Error("expected error for non-Astra environment, got nil")
+		t.Error("expected error for non-Astra backend, got nil")
 	}
 }
 
@@ -215,5 +215,20 @@ func TestExtractDevopsError(t *testing.T) {
 	expected := "no bearer token in request"
 	if errs[0].Message != expected {
 		t.Fatalf("expecting Message %q. got %q", expected, errs[0].Message)
+	}
+}
+
+func TestAwaitStatusOptions(t *testing.T) {
+	opts := &AwaitStatusOptions{
+		Target:      "ACTIVE",
+		LegalStates: []DatabaseStatus{"MAINTENANCE"},
+	}
+
+	if !opts.IsStatusLegal(DatabaseStatusMaintenance) {
+		t.Error("expected IsStatusLegal to return true for MAINTENANCE")
+	}
+
+	if opts.IsStatusLegal(DatabaseStatusTerminated) {
+		t.Error("expected IsStatusLegal to return false for TERMINATED")
 	}
 }

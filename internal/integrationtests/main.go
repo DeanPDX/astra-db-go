@@ -45,11 +45,15 @@ func main() {
 	e := harness.Environment()
 	// And all tests
 	tests := harness.Tests()
+	ran := 0
+	skipped := 0
+
 	totalStart := time.Now()
 	// Then run them
 	for _, test := range tests {
 		if len(e.TestPrefix) > 0 && !strings.HasPrefix(test.Name, e.TestPrefix) {
 			slog.Info(test.Name, "status", "SKIPPED")
+			skipped++
 			continue
 		}
 		slog.Info(test.Name, "status", "RUNNING")
@@ -59,6 +63,7 @@ func main() {
 		elapsed := time.Since(start)
 		// Show a result
 		if err == nil {
+			ran++
 			slog.Info(test.Name, "status", "PASS", "elapsed", elapsed)
 		} else {
 			slog.Error(test.Name, "status", "FAIL", "elapsed", elapsed, "error", err)
@@ -66,7 +71,7 @@ func main() {
 			return
 		}
 	}
-	slog.Info("All tests passed", "elapsed", time.Since(totalStart))
+	slog.Info("All tests passed", "elapsed", time.Since(totalStart), "ran", ran, "skipped", skipped)
 }
 
 // createLogFile ensures ./logs exists and creates a timestamped log file

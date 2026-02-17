@@ -8,7 +8,7 @@ Tests are broken out into standard unit tests and [Integration Tests](./internal
 
 ## Other libraries
 
-- [Python](https://github.com/datastax/astrapy).
-- [TypeScript](https://github.com/datastax/astra-db-ts).
-- [.NET](https://github.com/datastax/astra-db-csharp).
-- [Java](https://github.com/datastax/astra-db-java).
+- [Python](https://github.com/datastax/astrapy)
+- [TypeScript](https://github.com/datastax/astra-db-ts)
+- [.NET](https://github.com/datastax/astra-db-csharp)
+- [Java](https://github.com/datastax/astra-db-java)

@@ -16,38 +16,24 @@ package options
 
 import "fmt"
 
-// Environment represents the deployment environment for the database.
-type Environment string
+// AstraEnvironment represents which Astra environment to target (controls DevOps API URL).
+type AstraEnvironment string
 
 const (
-	// EnvironmentProd is the Astra production environment.
-	EnvironmentProd Environment = "prod"
-	// EnvironmentDev is the Astra development environment.
-	EnvironmentDev Environment = "dev"
-	// EnvironmentTest is the Astra test environment.
-	EnvironmentTest Environment = "test"
-	// EnvironmentHCD is the Hyper-Converged Database environment.
-	EnvironmentHCD Environment = "hcd"
-	// EnvironmentDSE is the DataStax Enterprise environment.
-	EnvironmentDSE Environment = "dse"
-	// EnvironmentCassandra is the open-source Cassandra environment.
-	EnvironmentCassandra Environment = "cassandra"
-	// EnvironmentOther is any other non-Astra environment.
-	EnvironmentOther Environment = "other"
+	// AstraEnvironmentProd is the Astra production environment.
+	AstraEnvironmentProd AstraEnvironment = "prod"
+	// AstraEnvironmentDev is the Astra development environment.
+	AstraEnvironmentDev AstraEnvironment = "dev"
+	// AstraEnvironmentTest is the Astra test environment.
+	AstraEnvironmentTest AstraEnvironment = "test"
 )
 
-// IsAstra returns true if this is an Astra environment (prod, dev, or test).
-func (e Environment) IsAstra() bool {
-	return e == EnvironmentProd || e == EnvironmentDev || e == EnvironmentTest
-}
-
 // DevOpsURL returns the Astra DevOps API base URL for this environment.
-// Only meaningful for Astra environments.
-func (e Environment) DevOpsURL() string {
+func (e AstraEnvironment) DevOpsURL() string {
 	switch e {
-	case EnvironmentDev:
+	case AstraEnvironmentDev:
 		return "https://api.dev.cloud.datastax.com"
-	case EnvironmentTest:
+	case AstraEnvironmentTest:
 		return "https://api.test.cloud.datastax.com"
 	default:
 		return "https://api.astra.datastax.com"
@@ -55,14 +41,50 @@ func (e Environment) DevOpsURL() string {
 }
 
 // AstraDBEndpoint returns the Data API endpoint for an Astra database.
-// Only meaningful for Astra environments.
-func (e Environment) AstraDBEndpoint(id, region string) string {
+func (e AstraEnvironment) AstraDBEndpoint(id, region string) string {
 	switch e {
-	case EnvironmentDev:
+	case AstraEnvironmentDev:
 		return fmt.Sprintf("https://%s-%s.apps.dev.astra.datastax.com", id, region)
-	case EnvironmentTest:
+	case AstraEnvironmentTest:
 		return fmt.Sprintf("https://%s-%s.apps.test.astra.datastax.com", id, region)
 	default:
 		return fmt.Sprintf("https://%s-%s.apps.astra.datastax.com", id, region)
 	}
+}
+
+// DataAPIBackend represents the database backend (controls Data API path).
+type DataAPIBackend string
+
+const (
+	// DataAPIBackendAstra is the Astra backend.
+	DataAPIBackendAstra DataAPIBackend = "astra"
+	// DataAPIBackendHCD is the Hyper-Converged Database backend.
+	DataAPIBackendHCD DataAPIBackend = "hcd"
+	// DataAPIBackendDSE is the DataStax Enterprise backend.
+	DataAPIBackendDSE DataAPIBackend = "dse"
+	// DataAPIBackendCassandra is the open-source Cassandra backend.
+	DataAPIBackendCassandra DataAPIBackend = "cassandra"
+	// DataAPIBackendOther is any other backend.
+	DataAPIBackendOther DataAPIBackend = "other"
+)
+
+// DataAPIPath returns the Data API URL path prefix for this backend.
+// Astra uses "api/json", while other backends have no prefix (the version
+// is appended separately by the command layer).
+//
+// So, for astra, the URL will be something like:
+// https://{database-id}-{region}.apps.astra.datastax.com/api/json/{version}/
+//
+// Non-astra DBs don't have /api/json. See also:
+// https://github.com/datastax/astra-db-ts/blob/45f1c7fd9d46d82eee802947a285437c70d419bf/src/lib/api/constants.ts#L62
+func (b DataAPIBackend) DataAPIPath() string {
+	if b == DataAPIBackendAstra {
+		return "api/json"
+	}
+	return ""
+}
+
+// IsAstra returns true if the backend is Astra.
+func (b DataAPIBackend) IsAstra() bool {
+	return b == DataAPIBackendAstra
 }

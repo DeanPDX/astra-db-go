@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -20,6 +21,7 @@ func init() {
 		{Name: "AdminListDatabasesPaginated", Run: AdminListDatabasesPaginated},
 		{Name: "AdminCreateDropDatabase", Run: AdminCreateDropDatabase},
 		{Name: "AdminKeyspaceCreateListDrop", Run: AdminKeyspaceCreateListDrop},
+		{Name: "AdminGetDatabaseNotFound", Run: AdminGetDatabaseNotFound},
 	}
 	harness.Register(t...)
 }
@@ -64,7 +66,7 @@ func AdminListDatabases(e *harness.TestEnv) error {
 	slog.Info("Listed databases", "count", len(databases))
 
 	for _, db := range databases {
-		slog.Info("Database", "id", db.ID, "name", db.Info.Name, "status", db.Status, "provider", db.Info.CloudProvider, "region", db.Info.Region)
+		slog.Info("Database", "id", db.ID, "name", db.Name, "status", db.Status, "provider", db.CloudProvider, "region", db.Region)
 	}
 
 	return nil
@@ -80,8 +82,8 @@ func AdminListDatabasesPaginated(e *harness.TestEnv) error {
 
 	// Using low page-size to try to  ensure pagination is exercised in tests.
 	pageSize := 5
-	var all []astradb.Database
-	opts := options.ListDatabases().SetInclude(options.DatabaseIncludeAll).SetLimit(pageSize)
+	var all []astradb.DatabaseInfo
+	opts := options.ListDatabases().SetInclude(options.DatabaseStatusAll).SetLimit(pageSize)
 
 	for page := 1; ; page++ {
 		databases, err := admin.ListDatabases(ctx, opts)
@@ -100,7 +102,7 @@ func AdminListDatabasesPaginated(e *harness.TestEnv) error {
 
 	slog.Info("Total databases found via pagination", "count", len(all))
 	for _, db := range all {
-		slog.Info("Database", "id", db.ID, "name", db.Info.Name, "status", db.Status)
+		slog.Info("Database", "id", db.ID, "name", db.Name, "status", db.Status)
 	}
 
 	return nil
@@ -115,35 +117,35 @@ func AdminCreateDropDatabase(e *harness.TestEnv) error {
 	}
 
 	// Create a database (non-blocking to keep test fast)
-	dbInfo := astradb.DatabaseInfo{
+	params := astradb.CreateDatabaseParams{
 		Name:          "go-sdk-integration-test",
 		CloudProvider: "gcp",
 		Region:        "us-east1",
 	}
 
-	slog.Info("Creating database", "name", dbInfo.Name, "provider", dbInfo.CloudProvider, "region", dbInfo.Region)
-	dbAdmin, err := admin.CreateDatabase(ctx, dbInfo,
+	slog.Info("Creating database", "name", params.Name, "provider", params.CloudProvider, "region", params.Region)
+	dbAdmin, err := admin.CreateDatabase(ctx, params,
 		options.CreateDatabase())
 	if err != nil {
 		return fmt.Errorf("CreateDatabase failed: %w", err)
 	}
 	slog.Info("Database creation initiated", "id", dbAdmin.ID())
 
-	// Verify we can get the database info via DbAdmin.
+	// Verify we can get the database info via AstraDbAdmin.
 	// Note: this is just a pass-through for AstraAdmin.GetDatabase,
 	// so we don't need to also test that function directly.
 	db, err := dbAdmin.Info(ctx)
 	if err != nil {
-		return fmt.Errorf("DbAdmin.Info failed: %w", err)
+		return fmt.Errorf("AstraDbAdmin.Info failed: %w", err)
 	}
-	slog.Info("Database info retrieved", "id", dbAdmin.ID(), "status", db.Status, "name", db.Info.Name)
+	slog.Info("Database info retrieved", "id", dbAdmin.ID(), "status", db.Status, "name", db.Name)
 
-	// Drop the database via DbAdmin (non-blocking)
+	// Drop the database via AstraDbAdmin (non-blocking)
 	slog.Info("Dropping database (non-blocking)", "id", dbAdmin.ID())
 	err = dbAdmin.Drop(ctx,
 		options.DropDatabase().SetBlocking(false))
 	if err != nil {
-		return fmt.Errorf("DbAdmin.Drop failed: %w", err)
+		return fmt.Errorf("AstraDbAdmin.Drop failed: %w", err)
 	}
 	slog.Info("Database drop initiated", "id", dbAdmin.ID())
 
@@ -160,7 +162,7 @@ func AdminKeyspaceCreateListDrop(e *harness.TestEnv) error {
 
 	// Find an active database to test against
 	databases, err := admin.ListDatabases(ctx,
-		options.ListDatabases().SetInclude(options.DatabaseIncludeActive).SetLimit(1))
+		options.ListDatabases().SetInclude(options.DatabaseStatusActive).SetLimit(1))
 	if err != nil {
 		return fmt.Errorf("ListDatabases failed: %w", err)
 	}
@@ -169,9 +171,9 @@ func AdminKeyspaceCreateListDrop(e *harness.TestEnv) error {
 	}
 
 	db := databases[0]
-	slog.Info("Using database for keyspace tests", "id", db.ID, "name", db.Info.Name, "region", db.Info.Region)
+	slog.Info("Using database for keyspace tests", "id", db.ID, "name", db.Name, "region", db.Region)
 
-	// Get an DbAdmin for this database
+	// Get an AstraDbAdmin for this database
 	dbAdmin := admin.DbAdmin(db.ID)
 
 	// Create a test keyspace with a unique name
@@ -208,6 +210,27 @@ func AdminKeyspaceCreateListDrop(e *harness.TestEnv) error {
 		return fmt.Errorf("DropKeyspace failed: %w", err)
 	}
 	slog.Info("Keyspace dropped", "name", ksName)
+
+	return nil
+}
+
+func AdminGetDatabaseNotFound(e *harness.TestEnv) error {
+	ctx := context.Background()
+	client := e.DefaultClient()
+	admin, err := client.Admin()
+	if err != nil {
+		return fmt.Errorf("Admin() failed: %w", err)
+	}
+
+	// Attempt to get a database with an ID that doesn't exist
+	_, err = admin.GetDatabase(ctx, "nonexistent-id")
+	if err == nil {
+		return fmt.Errorf("expected error when getting nonexistent database, got nil")
+	}
+	if !errors.Is(err, astradb.ErrNotFound) {
+		return fmt.Errorf("expected ErrNotFound when getting nonexistent database, got: %w", err)
+	}
+	slog.Info("GetDatabase with nonexistent ID correctly returned error", "error", err)
 
 	return nil
 }

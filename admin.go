@@ -17,10 +17,11 @@ package astradb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/datastax/astra-db-go/options"
@@ -33,10 +34,10 @@ const DefaultAdminAPIVersion = "v2"
 // Obtain an AstraAdmin instance from DataAPIClient.Admin().
 // Only valid for Astra environments.
 type AstraAdmin struct {
-	client      *DataAPIClient
-	options     *options.APIOptions
-	apiVersion  string
-	environment options.Environment
+	client           *DataAPIClient
+	options          *options.APIOptions
+	apiVersion       string
+	astraEnvironment options.AstraEnvironment
 }
 
 func (a *AstraAdmin) createCommand(method string, path string, payload any) *adminCommand {
@@ -69,26 +70,65 @@ type Region struct {
 	Zone string `json:"zone"`
 }
 
-// DatabaseStatus represents the status of an Astra database.
-type DatabaseStatus string
+// DatabaseStatus is a type alias for options.DatabaseStatus, representing
+// the status of an Astra database.
+type DatabaseStatus = options.DatabaseStatus
 
+// Re-export DatabaseStatus constants for convenience.
 const (
-	// DatabaseStatusActive indicates the database is ready for use.
-	DatabaseStatusActive DatabaseStatus = "ACTIVE"
-	// DatabaseStatusPending indicates the database creation is pending.
-	DatabaseStatusPending DatabaseStatus = "PENDING"
-	// DatabaseStatusInitializing indicates the database is being initialized.
-	DatabaseStatusInitializing DatabaseStatus = "INITIALIZING"
-	// DatabaseStatusTerminating indicates the database is being terminated.
-	DatabaseStatusTerminating DatabaseStatus = "TERMINATING"
-	// DatabaseStatusTerminated indicates the database has been terminated.
-	DatabaseStatusTerminated DatabaseStatus = "TERMINATED"
-	// DatabaseStatusMaintenance indicates the database is under maintenance.
-	DatabaseStatusMaintenance DatabaseStatus = "MAINTENANCE"
+	DatabaseStatusActive        = options.DatabaseStatusActive
+	DatabaseStatusAssociating   = options.DatabaseStatusAssociating
+	DatabaseStatusPending       = options.DatabaseStatusPending
+	DatabaseStatusInitializing  = options.DatabaseStatusInitializing
+	DatabaseStatusTerminating   = options.DatabaseStatusTerminating
+	DatabaseStatusTerminated    = options.DatabaseStatusTerminated
+	DatabaseStatusMaintenance   = options.DatabaseStatusMaintenance
+	DatabaseStatusError         = options.DatabaseStatusError
+	DatabaseStatusParking       = options.DatabaseStatusParking
+	DatabaseStatusParked        = options.DatabaseStatusParked
+	DatabaseStatusUnparking     = options.DatabaseStatusUnparking
+	DatabaseStatusPreparing     = options.DatabaseStatusPreparing
+	DatabaseStatusPrepared      = options.DatabaseStatusPrepared
+	DatabaseStatusResizing      = options.DatabaseStatusResizing
+	DatabaseStatusSuspended     = options.DatabaseStatusSuspended
+	DatabaseStatusSuspending    = options.DatabaseStatusSuspending
+	DatabaseStatusNonTerminated = options.DatabaseStatusNonTerminated
+	DatabaseStatusAll           = options.DatabaseStatusAll
 )
 
-// Database represents full database information from the DevOps API.
-type Database struct {
+// DatabaseInfo is the curated view of an Astra database, flattening
+// and simplifying the raw DevOps API response.
+type DatabaseInfo struct {
+	// ID is the unique database identifier.
+	ID string
+	// Name is the database name.
+	Name string
+	// Status is the current database status.
+	Status DatabaseStatus
+	// Keyspaces is the merged list of all keyspaces (default + additional).
+	Keyspaces []string
+	// CloudProvider is the cloud provider (e.g., "aws", "gcp", "azure").
+	CloudProvider string
+	// Region is the deployment region.
+	Region string
+	// Environment is the Astra environment.
+	Environment options.AstraEnvironment
+	// CreatedAt is when the database was created.
+	CreatedAt time.Time
+	// LastUsed is when the database was last used (zero if unknown).
+	LastUsed time.Time
+	// OrgID is the organization identifier.
+	OrgID string
+	// OwnerID is the owner's identifier.
+	OwnerID string
+	// Raw is the raw DevOps API response, provided as an escape hatch
+	// for fields not in the curated view.
+	Raw *rawDatabaseResponse
+}
+
+// rawDatabaseResponse represents the full database response from the DevOps API.
+// Used internally for JSON deserialization; the curated [DatabaseInfo] is the public type.
+type rawDatabaseResponse struct {
 	// ID is the unique database identifier.
 	ID string `json:"id"`
 	// OrgID is the organization identifier.
@@ -96,17 +136,19 @@ type Database struct {
 	// OwnerID is the owner's identifier.
 	OwnerID string `json:"ownerId"`
 	// Info contains database configuration details.
-	Info DatabaseDetails `json:"info"`
+	Info rawDatabaseDetails `json:"info"`
 	// CreationTime is when the database was created.
 	CreationTime string `json:"creationTime"`
 	// TerminationTime is when the database was terminated (if applicable).
 	TerminationTime string `json:"terminationTime,omitempty"`
+	// LastUsageTime is when the database was last used.
+	LastUsageTime string `json:"lastUsageTime,omitempty"`
 	// Status is the current database status.
 	Status DatabaseStatus `json:"status"`
 }
 
-// DatabaseDetails contains the nested info object from the database response.
-type DatabaseDetails struct {
+// rawDatabaseDetails contains the nested info object from the database response.
+type rawDatabaseDetails struct {
 	// Name is the database name.
 	Name string `json:"name"`
 	// Keyspace is the default keyspace.
@@ -119,6 +161,33 @@ type DatabaseDetails struct {
 	AdditionalKeyspaces []string `json:"additionalKeyspaces"`
 	// DbType is the database type (e.g., "vector").
 	DbType string `json:"dbType"`
+}
+
+// toDatabaseInfo converts a raw DevOps API response to the curated DatabaseInfo.
+func (r *rawDatabaseResponse) toDatabaseInfo(env options.AstraEnvironment) *DatabaseInfo {
+	var keyspaces []string
+	if r.Info.Keyspace != "" {
+		keyspaces = append(keyspaces, r.Info.Keyspace)
+	}
+	keyspaces = append(keyspaces, r.Info.AdditionalKeyspaces...)
+
+	createdAt, _ := time.Parse(time.RFC3339, r.CreationTime)
+	lastUsed, _ := time.Parse(time.RFC3339, r.LastUsageTime)
+
+	return &DatabaseInfo{
+		ID:            r.ID,
+		Name:          r.Info.Name,
+		Status:        r.Status,
+		Keyspaces:     keyspaces,
+		CloudProvider: r.Info.CloudProvider,
+		Region:        r.Info.Region,
+		Environment:   env,
+		CreatedAt:     createdAt,
+		LastUsed:      lastUsed,
+		OrgID:         r.OrgID,
+		OwnerID:       r.OwnerID,
+		Raw:           r,
+	}
 }
 
 // resolveOptions merges AstraAdmin options with client options.
@@ -187,15 +256,15 @@ func (a *AstraAdmin) FindAvailableRegions(ctx context.Context, opts ...options.B
 //
 //	databases, err := admin.ListDatabases(ctx,
 //	    options.ListDatabases().
-//	        SetInclude(options.DatabaseIncludeActive).
+//	        SetInclude(options.DatabaseStatusActive).
 //	        SetProvider(options.CloudProviderGCP))
 //
 // Example - paginate through results and retrieve all databases:
 //
-//	func listAll(ctx context.Context, admin *astradb.AstraAdmin) ([]astradb.Database, error) {
-//		var all []astradb.Database
+//	func listAll(ctx context.Context, admin *astradb.AstraAdmin) ([]astradb.DatabaseInfo, error) {
+//		var all []astradb.DatabaseInfo
 //		pageSize := 100
-//		opts := options.ListDatabases().SetInclude(options.DatabaseIncludeAll).SetLimit(pageSize)
+//		opts := options.ListDatabases().SetInclude(options.DatabaseStatusAll).SetLimit(pageSize)
 //		for {
 //			databases, err := admin.ListDatabases(ctx, opts)
 //			if err != nil {
@@ -210,7 +279,7 @@ func (a *AstraAdmin) FindAvailableRegions(ctx context.Context, opts ...options.B
 //		}
 //		return all, nil
 //	}
-func (a *AstraAdmin) ListDatabases(ctx context.Context, opts ...options.Builder[options.ListDatabasesOptions]) ([]Database, error) {
+func (a *AstraAdmin) ListDatabases(ctx context.Context, opts ...options.Builder[options.ListDatabasesOptions]) ([]DatabaseInfo, error) {
 	merged, err := options.MergeOptions(opts...)
 	if err != nil {
 		return nil, err
@@ -237,9 +306,14 @@ func (a *AstraAdmin) ListDatabases(ctx context.Context, opts ...options.Builder[
 		return nil, err
 	}
 
-	var databases []Database
-	if err := json.Unmarshal(resp.Body, &databases); err != nil {
+	var raw []rawDatabaseResponse
+	if err := json.Unmarshal(resp.Body, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse databases response: %w", err)
+	}
+
+	databases := make([]DatabaseInfo, len(raw))
+	for i := range raw {
+		databases[i] = *raw[i].toDatabaseInfo(a.astraEnvironment)
 	}
 
 	return databases, nil
@@ -255,23 +329,27 @@ func (a *AstraAdmin) ListDatabases(ctx context.Context, opts ...options.Builder[
 //	    log.Fatal(err)
 //	}
 //	fmt.Println("Status:", db.Status)
-func (a *AstraAdmin) GetDatabase(ctx context.Context, databaseID string) (*Database, error) {
+func (a *AstraAdmin) GetDatabase(ctx context.Context, databaseID string) (*DatabaseInfo, error) {
 	cmd := a.createCommand(http.MethodGet, "/databases/"+databaseID, nil)
 	resp, err := cmd.execute(ctx)
 	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			// Wrap error to provide more context and allow callers to check with errors.Is(err, ErrNotFound)
+			return nil, fmt.Errorf("%w: %v", ErrNotFound, err)
+		}
 		return nil, err
 	}
 
-	var db Database
-	if err := json.Unmarshal(resp.Body, &db); err != nil {
+	var raw rawDatabaseResponse
+	if err := json.Unmarshal(resp.Body, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse database response: %w", err)
 	}
 
-	return &db, nil
+	return raw.toDatabaseInfo(a.astraEnvironment), nil
 }
 
-// DatabaseInfo contains the required parameters for creating a database.
-type DatabaseInfo struct {
+// CreateDatabaseParams contains the required parameters for creating a database.
+type CreateDatabaseParams struct {
 	// Name is the database name. Must start and end with a letter or number.
 	// Can contain letters, numbers, and special characters: & + - _ ( ) < > . , @
 	// Cannot exceed 50 characters.
@@ -293,7 +371,7 @@ type createDatabaseRequest struct {
 	CapacityUnits int    `json:"capacityUnits"`
 }
 
-// DbAdmin returns a DbAdmin handle for the given database ID.
+// DbAdmin returns an AstraDbAdmin handle for the given database ID.
 //
 // No API calls are made; this simply creates a handle for performing
 // admin operations on the specified database.
@@ -302,15 +380,80 @@ type createDatabaseRequest struct {
 //
 //	dbAdmin := admin.DbAdmin("database-id")
 //	keyspaces, err := dbAdmin.ListKeyspaces(ctx)
-func (a *AstraAdmin) DbAdmin(databaseID string) *DbAdmin {
-	return &DbAdmin{
+func (a *AstraAdmin) DbAdmin(databaseID string) *AstraDbAdmin {
+	return &AstraDbAdmin{
 		id:    databaseID,
 		admin: a,
 	}
 }
 
+type AwaitStatusOptions struct {
+	// Will default to sane value
+	PollInterval time.Duration
+	// The status we are waiting for
+	Target DatabaseStatus
+	// Legal statuses that DB can/will enter before entering target status.
+	LegalStates []DatabaseStatus
+	// If true, a not found error is treated as a success. Used by DropDatabase where a 404 means the database is gone.
+	NotFoundIsDone bool
+}
+
+// Case-insensitive compare out of an abundance of caution
+func compareStatus(s DatabaseStatus, t DatabaseStatus) bool {
+	return strings.EqualFold(string(s), string(t))
+}
+
+// Interval returns PollInterval if non-zero and falls back to default.
+func (o *AwaitStatusOptions) Interval() time.Duration {
+	if o.PollInterval <= 0 {
+		return options.DefaultDatabasePollInterval
+	}
+	return o.PollInterval
+}
+
+// IsStatusLegal returns true if the given status is in the list of legal states.
+func (o *AwaitStatusOptions) IsStatusLegal(s DatabaseStatus) bool {
+	for _, legal := range o.LegalStates {
+		if compareStatus(s, legal) {
+			return true
+		}
+	}
+	return false
+}
+
+// awaitStatus polls GetDatabase until the status matches a target or hits a failure state.
+// See [AwaitStatusOptions] for configuration.
+func (a *AstraAdmin) awaitStatus(ctx context.Context, databaseID string, opts AwaitStatusOptions) error {
+	ticker := time.NewTicker(opts.Interval())
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			db, err := a.GetDatabase(ctx, databaseID)
+			if err != nil {
+				// If not found = done, don't return not found error.
+				if opts.NotFoundIsDone && errors.Is(err, ErrNotFound) {
+					return nil
+				}
+				return err
+			}
+			if db.Status == opts.Target {
+				// We hit our desired status
+				return nil
+			}
+			// Otherwise, let's make sure this is an allowed status.
+			if opts.IsStatusLegal(db.Status) {
+				continue
+			}
+			return fmt.Errorf("database entered unexpected status: %s", db.Status)
+		}
+	}
+}
+
 // CreateDatabase creates a new serverless vector database and returns an
-// [DbAdmin] for performing admin operations on it.
+// [AstraDbAdmin] for performing admin operations on it.
 //
 // The DevOps API endpoint is: POST https://api.astra.datastax.com/v2/databases
 //
@@ -321,7 +464,7 @@ func (a *AstraAdmin) DbAdmin(databaseID string) *DbAdmin {
 // Example - create a database (blocking by default):
 //
 //	admin, err := client.Admin()
-//	dbAdmin, err := admin.CreateDatabase(ctx, astradb.DatabaseInfo{
+//	dbAdmin, err := admin.CreateDatabase(ctx, astradb.CreateDatabaseParams{
 //	    Name:          "my-database",
 //	    CloudProvider: "gcp",
 //	    Region:        "us-east1",
@@ -329,7 +472,7 @@ func (a *AstraAdmin) DbAdmin(databaseID string) *DbAdmin {
 //
 // Example - create without waiting:
 //
-//	dbAdmin, err := admin.CreateDatabase(ctx, astradb.DatabaseInfo{
+//	dbAdmin, err := admin.CreateDatabase(ctx, astradb.CreateDatabaseParams{
 //	    Name:          "my-database",
 //	    CloudProvider: "gcp",
 //	    Region:        "us-east1",
@@ -337,14 +480,14 @@ func (a *AstraAdmin) DbAdmin(databaseID string) *DbAdmin {
 //
 // Example - create with custom keyspace and poll interval:
 //
-//	dbAdmin, err := admin.CreateDatabase(ctx, astradb.DatabaseInfo{
+//	dbAdmin, err := admin.CreateDatabase(ctx, astradb.CreateDatabaseParams{
 //	    Name:          "my-database",
 //	    CloudProvider: "aws",
 //	    Region:        "us-east-1",
 //	}, options.CreateDatabase().
 //	    SetKeyspace("my_keyspace").
 //	    SetPollInterval(5 * time.Second))
-func (a *AstraAdmin) CreateDatabase(ctx context.Context, info DatabaseInfo, opts ...options.Builder[options.CreateDatabaseOptions]) (*DbAdmin, error) {
+func (a *AstraAdmin) CreateDatabase(ctx context.Context, params CreateDatabaseParams, opts ...options.Builder[options.CreateDatabaseOptions]) (*AstraDbAdmin, error) {
 	// Merge options
 	merged, err := options.MergeOptions(opts...)
 	if err != nil {
@@ -353,9 +496,9 @@ func (a *AstraAdmin) CreateDatabase(ctx context.Context, info DatabaseInfo, opts
 
 	// Build request payload
 	payload := createDatabaseRequest{
-		Name:          info.Name,
-		CloudProvider: info.CloudProvider,
-		Region:        info.Region,
+		Name:          params.Name,
+		CloudProvider: params.CloudProvider,
+		Region:        params.Region,
 		DbType:        "vector",
 		Tier:          "serverless",
 		CapacityUnits: 1,
@@ -395,28 +538,13 @@ func (a *AstraAdmin) CreateDatabase(ctx context.Context, info DatabaseInfo, opts
 		pollInterval = *merged.PollInterval
 	}
 
-	slog.Debug("Waiting for database to become ACTIVE", "id", dbID, "pollInterval", pollInterval)
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return dbAdmin, ctx.Err()
-		case <-ticker.C:
-			db, err := a.GetDatabase(ctx, dbID)
-			if err != nil {
-				return dbAdmin, fmt.Errorf("failed to get database status: %w", err)
-			}
-			slog.Debug("Database status", "id", dbID, "status", db.Status)
-			if db.Status == DatabaseStatusActive {
-				return dbAdmin, nil
-			}
-			if db.Status == DatabaseStatusTerminated || db.Status == DatabaseStatusTerminating {
-				return dbAdmin, fmt.Errorf("database entered unexpected status: %s", db.Status)
-			}
-		}
+	awaitOpts := AwaitStatusOptions{
+		PollInterval: pollInterval,
+		Target:       DatabaseStatusActive,
+		LegalStates:  []DatabaseStatus{DatabaseStatusInitializing, DatabaseStatusPending, DatabaseStatusAssociating},
 	}
+	err = a.awaitStatus(ctx, dbID, awaitOpts)
+	return dbAdmin, err
 }
 
 // DropDatabase terminates a database, permanently deleting all of its data.
@@ -468,25 +596,12 @@ func (a *AstraAdmin) DropDatabase(ctx context.Context, databaseID string, opts .
 		pollInterval = *merged.PollInterval
 	}
 
-	slog.Debug("Waiting for database to be terminated", "id", databaseID, "pollInterval", pollInterval)
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			db, err := a.GetDatabase(ctx, databaseID)
-			if err != nil {
-				// If we get a 404 or similar, the database is gone
-				slog.Debug("Database no longer accessible (likely terminated)", "id", databaseID, "error", err)
-				return nil
-			}
-			slog.Debug("Database status", "id", databaseID, "status", db.Status)
-			if db.Status == DatabaseStatusTerminated {
-				return nil
-			}
-		}
+	awaitOpts := AwaitStatusOptions{
+		PollInterval:   pollInterval,
+		Target:         DatabaseStatusTerminated,
+		LegalStates:    []DatabaseStatus{DatabaseStatusTerminating},
+		NotFoundIsDone: true, // Not found likely means the database is gone, so treat it as a success case.
 	}
+
+	return a.awaitStatus(ctx, databaseID, awaitOpts)
 }

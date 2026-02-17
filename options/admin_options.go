@@ -38,11 +38,7 @@ func (o FindAvailableRegionsOptions) Validate() error {
 // List implements Builder[FindAvailableRegionsOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Builder[FindAvailableRegionsOptions].
 func (o *FindAvailableRegionsOptions) List() []func(*FindAvailableRegionsOptions) {
-	return []func(*FindAvailableRegionsOptions){
-		func(target *FindAvailableRegionsOptions) {
-			copyNonNilFields(o, target)
-		},
-	}
+	return NoopBuilder(o)
 }
 
 // FindAvailableRegionsOptionsBuilder is a builder for FindAvailableRegionsOptions that implements
@@ -70,44 +66,52 @@ func (b *FindAvailableRegionsOptionsBuilder) SetFilterByOrg(v bool) *FindAvailab
 	return b
 }
 
-// DatabaseInclude controls which databases are returned by ListDatabases based on status.
-type DatabaseInclude string
+// DatabaseStatus represents the status of an Astra database.
+// Also used as a filter value for ListDatabases (e.g., DatabaseStatusAll, DatabaseStatusNonTerminated).
+type DatabaseStatus string
 
 const (
-	// DatabaseIncludeNonTerminated returns all databases that are not terminated (default).
-	DatabaseIncludeNonTerminated DatabaseInclude = "nonterminated"
-	// DatabaseIncludeAll returns all databases regardless of status.
-	DatabaseIncludeAll DatabaseInclude = "all"
-	// DatabaseIncludeActive returns only active databases.
-	DatabaseIncludeActive DatabaseInclude = "active"
-	// DatabaseIncludePending returns only pending databases.
-	DatabaseIncludePending DatabaseInclude = "pending"
-	// DatabaseIncludePreparing returns only databases that are preparing.
-	DatabaseIncludePreparing DatabaseInclude = "preparing"
-	// DatabaseIncludePrepared returns only prepared databases.
-	DatabaseIncludePrepared DatabaseInclude = "prepared"
-	// DatabaseIncludeInitializing returns only databases that are initializing.
-	DatabaseIncludeInitializing DatabaseInclude = "initializing"
-	// DatabaseIncludeParked returns only parked (hibernated) databases.
-	DatabaseIncludeParked DatabaseInclude = "parked"
-	// DatabaseIncludeParking returns only databases that are being parked.
-	DatabaseIncludeParking DatabaseInclude = "parking"
-	// DatabaseIncludeUnparking returns only databases that are being unparked.
-	DatabaseIncludeUnparking DatabaseInclude = "unparking"
-	// DatabaseIncludeTerminating returns only databases that are being terminated.
-	DatabaseIncludeTerminating DatabaseInclude = "terminating"
-	// DatabaseIncludeTerminated returns only terminated databases.
-	DatabaseIncludeTerminated DatabaseInclude = "terminated"
-	// DatabaseIncludeResizing returns only databases that are being resized.
-	DatabaseIncludeResizing DatabaseInclude = "resizing"
-	// DatabaseIncludeError returns only databases in an error state.
-	DatabaseIncludeError DatabaseInclude = "error"
-	// DatabaseIncludeMaintenance returns only databases under maintenance.
-	DatabaseIncludeMaintenance DatabaseInclude = "maintenance"
-	// DatabaseIncludeSuspended returns only suspended databases.
-	DatabaseIncludeSuspended DatabaseInclude = "suspended"
-	// DatabaseIncludeSuspending returns only databases that are being suspended.
-	DatabaseIncludeSuspending DatabaseInclude = "suspending"
+	// DatabaseStatusActive indicates the database is ready for use.
+	DatabaseStatusActive DatabaseStatus = "ACTIVE"
+	// DatabaseStatusAssociating indicates the database is being associated to a [PCU] group.
+	//
+	// [PCU]: https://docs.datastax.com/en/astra-db-serverless/administration/provisioned-capacity-units.html
+	DatabaseStatusAssociating DatabaseStatus = "ASSOCIATING"
+	// DatabaseStatusPending indicates the database creation is pending.
+	DatabaseStatusPending DatabaseStatus = "PENDING"
+	// DatabaseStatusInitializing indicates the database is being initialized.
+	DatabaseStatusInitializing DatabaseStatus = "INITIALIZING"
+	// DatabaseStatusTerminating indicates the database is being terminated.
+	DatabaseStatusTerminating DatabaseStatus = "TERMINATING"
+	// DatabaseStatusTerminated indicates the database has been terminated.
+	DatabaseStatusTerminated DatabaseStatus = "TERMINATED"
+	// DatabaseStatusMaintenance indicates the database is under maintenance.
+	DatabaseStatusMaintenance DatabaseStatus = "MAINTENANCE"
+	// DatabaseStatusError indicates the database is in an error state.
+	DatabaseStatusError DatabaseStatus = "ERROR"
+	// DatabaseStatusParking indicates the database is being parked (hibernated).
+	DatabaseStatusParking DatabaseStatus = "PARKING"
+	// DatabaseStatusParked indicates the database is parked (hibernated).
+	DatabaseStatusParked DatabaseStatus = "PARKED"
+	// DatabaseStatusUnparking indicates the database is being unparked.
+	DatabaseStatusUnparking DatabaseStatus = "UNPARKING"
+	// DatabaseStatusPreparing indicates the database is preparing.
+	DatabaseStatusPreparing DatabaseStatus = "PREPARING"
+	// DatabaseStatusPrepared indicates the database is prepared.
+	DatabaseStatusPrepared DatabaseStatus = "PREPARED"
+	// DatabaseStatusResizing indicates the database is being resized.
+	DatabaseStatusResizing DatabaseStatus = "RESIZING"
+	// DatabaseStatusSuspended indicates the database is suspended.
+	DatabaseStatusSuspended DatabaseStatus = "SUSPENDED"
+	// DatabaseStatusSuspending indicates the database is being suspended.
+	DatabaseStatusSuspending DatabaseStatus = "SUSPENDING"
+
+	// DatabaseStatusNonTerminated is a special filter value for ListDatabases
+	// that returns all databases that are not terminated (default).
+	DatabaseStatusNonTerminated DatabaseStatus = "nonterminated"
+	// DatabaseStatusAll is a special filter value for ListDatabases
+	// that returns all databases regardless of status.
+	DatabaseStatusAll DatabaseStatus = "all"
 )
 
 // CloudProviderFilter controls which databases are returned by ListDatabases based on cloud provider.
@@ -126,8 +130,8 @@ const (
 
 // ListDatabasesOptions represents options for the ListDatabases operation.
 type ListDatabasesOptions struct {
-	// Include filters databases by status. Defaults to "nonterminated".
-	Include *DatabaseInclude
+	// Include filters databases by status. Defaults to DatabaseStatusNonTerminated.
+	Include *DatabaseStatus
 	// Provider filters databases by cloud provider. Defaults to "ALL".
 	Provider *CloudProviderFilter
 	// Limit is the maximum number of databases to return (1-100). Defaults to 25.
@@ -145,11 +149,7 @@ func (o ListDatabasesOptions) Validate() error {
 // List implements Builder[ListDatabasesOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Builder[ListDatabasesOptions].
 func (o *ListDatabasesOptions) List() []func(*ListDatabasesOptions) {
-	return []func(*ListDatabasesOptions){
-		func(target *ListDatabasesOptions) {
-			copyNonNilFields(o, target)
-		},
-	}
+	return NoopBuilder(o)
 }
 
 // ListDatabasesOptionsBuilder is a builder for ListDatabasesOptions.
@@ -168,7 +168,7 @@ func (b *ListDatabasesOptionsBuilder) List() []func(*ListDatabasesOptions) {
 }
 
 // SetInclude filters databases by status.
-func (b *ListDatabasesOptionsBuilder) SetInclude(v DatabaseInclude) *ListDatabasesOptionsBuilder {
+func (b *ListDatabasesOptionsBuilder) SetInclude(v DatabaseStatus) *ListDatabasesOptionsBuilder {
 	b.Opts = append(b.Opts, func(o *ListDatabasesOptions) {
 		o.Include = &v
 	})
@@ -219,11 +219,7 @@ func (o CreateDatabaseOptions) Validate() error {
 // List implements Builder[CreateDatabaseOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Builder[CreateDatabaseOptions].
 func (o *CreateDatabaseOptions) List() []func(*CreateDatabaseOptions) {
-	return []func(*CreateDatabaseOptions){
-		func(target *CreateDatabaseOptions) {
-			copyNonNilFields(o, target)
-		},
-	}
+	return NoopBuilder(o)
 }
 
 // CreateDatabaseOptionsBuilder is a builder for CreateDatabaseOptions.
@@ -284,11 +280,7 @@ func (o DropDatabaseOptions) Validate() error {
 // List implements Builder[DropDatabaseOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Builder[DropDatabaseOptions].
 func (o *DropDatabaseOptions) List() []func(*DropDatabaseOptions) {
-	return []func(*DropDatabaseOptions){
-		func(target *DropDatabaseOptions) {
-			copyNonNilFields(o, target)
-		},
-	}
+	return NoopBuilder(o)
 }
 
 // DropDatabaseOptionsBuilder is a builder for DropDatabaseOptions.
@@ -344,11 +336,7 @@ func (o CreateKeyspaceOptions) Validate() error {
 // List implements Builder[CreateKeyspaceOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Builder[CreateKeyspaceOptions].
 func (o *CreateKeyspaceOptions) List() []func(*CreateKeyspaceOptions) {
-	return []func(*CreateKeyspaceOptions){
-		func(target *CreateKeyspaceOptions) {
-			copyNonNilFields(o, target)
-		},
-	}
+	return NoopBuilder(o)
 }
 
 // CreateKeyspaceOptionsBuilder is a builder for CreateKeyspaceOptions.

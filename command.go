@@ -135,10 +135,11 @@ func (c *command) url() (string, error) {
 	if len(c.db.Endpoint()) == 0 {
 		return "", errors.New("empty API endpoint")
 	}
+	basePath := c.resolveOptions().GetDataAPIBackend().DataAPIPath()
 	if c.databaseAdmin {
-		return url.JoinPath(c.db.Endpoint(), "/api/json", c.ApiVersion())
+		return url.JoinPath(c.db.Endpoint(), basePath, c.ApiVersion())
 	}
-	return url.JoinPath(c.db.Endpoint(), "/api/json", c.ApiVersion(), c.Keyspace(), c.resourceName)
+	return url.JoinPath(c.db.Endpoint(), basePath, c.ApiVersion(), c.Keyspace(), c.resourceName)
 }
 
 // This is similar to the [.NET client]. If we have a command name we want to

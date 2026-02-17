@@ -108,11 +108,11 @@ func (d *Db) DropCollection(ctx context.Context, name string) error {
 
 // DatabaseAdmin returns a DatabaseAdmin for managing keyspaces on this database.
 // The concrete implementation depends on the environment:
-//   - Astra environments return an [DbAdmin] (DevOps API)
+//   - Astra environments return an [AstraDbAdmin] (DevOps API)
 //   - Non-Astra environments return a [DataAPIDatabaseAdmin] (Data API)
 func (d *Db) DatabaseAdmin() (DatabaseAdmin, error) {
-	// Astra environments use the DevOps API.
-	if d.client.environment.IsAstra() {
+	// Astra backends use the DevOps API.
+	if d.client.dataAPIBackend.IsAstra() {
 		admin, err := d.client.Admin()
 		if err != nil {
 			return nil, err
@@ -123,7 +123,7 @@ func (d *Db) DatabaseAdmin() (DatabaseAdmin, error) {
 		}
 		return admin.DbAdmin(id), nil
 	}
-	// Non-astra environments use the Data API.
+	// Non-Astra backends use the Data API.
 	return &DataAPIDatabaseAdmin{db: d}, nil
 }
 

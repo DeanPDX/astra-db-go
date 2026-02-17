@@ -22,7 +22,7 @@ import (
 
 // DatabaseAdmin provides keyspace management operations for a database.
 // The concrete implementation depends on the environment:
-//   - Astra environments use [DbAdmin] (DevOps API)
+//   - Astra environments use [AstraDbAdmin] (DevOps API)
 //   - Non-Astra environments use [DataAPIDatabaseAdmin] (Data API)
 type DatabaseAdmin interface {
 	ListKeyspaces(ctx context.Context) ([]string, error)
@@ -31,5 +31,5 @@ type DatabaseAdmin interface {
 }
 
 // Compile-time interface checks
-var _ DatabaseAdmin = (*DbAdmin)(nil)
+var _ DatabaseAdmin = (*AstraDbAdmin)(nil)
 var _ DatabaseAdmin = (*DataAPIDatabaseAdmin)(nil)

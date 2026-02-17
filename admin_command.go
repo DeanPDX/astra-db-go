@@ -21,7 +21,7 @@ type adminCommand struct {
 }
 
 func (ac *adminCommand) url() (string, error) {
-	baseURL, err := url.JoinPath(ac.admin.environment.DevOpsURL(), ac.admin.apiVersion, ac.path)
+	baseURL, err := url.JoinPath(ac.admin.astraEnvironment.DevOpsURL(), ac.admin.apiVersion, ac.path)
 	if err != nil {
 		return "", err
 	}
@@ -125,7 +125,11 @@ func (ac *adminCommand) execute(ctx context.Context) (*adminResponse, error) {
 
 	// Handle error responses
 	if resp.StatusCode >= 400 {
-		return nil, extractDevOpsError(resp.StatusCode, body)
+		return &adminResponse{
+			Body:       body,
+			Headers:    resp.Header,
+			StatusCode: resp.StatusCode,
+		}, extractDevOpsError(resp.StatusCode, body)
 	}
 
 	return &adminResponse{

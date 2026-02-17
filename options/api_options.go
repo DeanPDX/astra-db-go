@@ -51,9 +51,13 @@ type APIOptions struct {
 	// Set this at any level (Client, Database, Collection/Table, or Command).
 	WarningHandler WarningHandler
 
-	// Environment is the deployment environment (e.g., prod, dev, hcd).
-	// Determines which admin paths are available.
-	Environment *Environment
+	// AstraEnvironment is the Astra environment (prod, dev, test).
+	// Controls the DevOps API URL. Defaults to prod.
+	AstraEnvironment *AstraEnvironment
+
+	// DataAPIBackend is the database backend (astra, hcd, dse, cassandra, other).
+	// Controls the Data API path. Defaults to astra.
+	DataAPIBackend *DataAPIBackend
 }
 
 // TimeoutOptions contains timeout configuration for API operations.
@@ -173,8 +177,11 @@ func Merge(layers ...*APIOptions) *APIOptions {
 		}
 
 		// Merge environment
-		if layer.Environment != nil {
-			result.Environment = layer.Environment
+		if layer.AstraEnvironment != nil {
+			result.AstraEnvironment = layer.AstraEnvironment
+		}
+		if layer.DataAPIBackend != nil {
+			result.DataAPIBackend = layer.DataAPIBackend
 		}
 	}
 
@@ -267,10 +274,17 @@ func WithTimeout(d time.Duration) APIOption {
 	return WithRequestTimeout(d)
 }
 
-// WithEnvironment sets the deployment environment.
-func WithEnvironment(env Environment) APIOption {
+// WithAstraEnvironment sets the Astra environment (prod, dev, test).
+func WithAstraEnvironment(env AstraEnvironment) APIOption {
 	return func(o *APIOptions) {
-		o.Environment = &env
+		o.AstraEnvironment = &env
+	}
+}
+
+// WithDataAPIBackend sets the database backend (astra, hcd, dse, cassandra, other).
+func WithDataAPIBackend(backend DataAPIBackend) APIOption {
+	return func(o *APIOptions) {
+		o.DataAPIBackend = &backend
 	}
 }
 
@@ -328,12 +342,20 @@ func (o *APIOptions) GetHTTPClient() *http.Client {
 	return o.HTTPClient
 }
 
-// GetEnvironment returns the environment or EnvironmentProd if not set.
-func (o *APIOptions) GetEnvironment() Environment {
-	if o == nil || o.Environment == nil {
-		return EnvironmentProd
+// GetAstraEnvironment returns the Astra environment or AstraEnvironmentProd if not set.
+func (o *APIOptions) GetAstraEnvironment() AstraEnvironment {
+	if o == nil || o.AstraEnvironment == nil {
+		return AstraEnvironmentProd
 	}
-	return *o.Environment
+	return *o.AstraEnvironment
+}
+
+// GetDataAPIBackend returns the database backend or DataAPIBackendAstra if not set.
+func (o *APIOptions) GetDataAPIBackend() DataAPIBackend {
+	if o == nil || o.DataAPIBackend == nil {
+		return DataAPIBackendAstra
+	}
+	return *o.DataAPIBackend
 }
 
 // GetRequestTimeout returns the request timeout or 30s if not set.

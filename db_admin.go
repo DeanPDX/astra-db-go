@@ -24,9 +24,9 @@ import (
 	"github.com/datastax/astra-db-go/options"
 )
 
-// DbAdmin provides admin operations for a specific Astra database
+// AstraDbAdmin provides admin operations for a specific Astra database
 // via the DevOps API.
-// Obtain a DbAdmin from [AstraAdmin.CreateDatabase] or [AstraAdmin.DbAdmin].
+// Obtain an AstraDbAdmin from [AstraAdmin.CreateDatabase] or [AstraAdmin.DbAdmin].
 //
 // Example:
 //
@@ -34,7 +34,7 @@ import (
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-//	dbAdmin, err := admin.CreateDatabase(ctx, astradb.DatabaseInfo{
+//	dbAdmin, err := admin.CreateDatabase(ctx, astradb.CreateDatabaseParams{
 //	    Name:          "my-database",
 //	    CloudProvider: "gcp",
 //	    Region:        "us-east1",
@@ -44,13 +44,13 @@ import (
 //	}
 //
 //	keyspaces, err := dbAdmin.ListKeyspaces(ctx)
-type DbAdmin struct {
+type AstraDbAdmin struct {
 	id    string
 	admin *AstraAdmin
 }
 
 // ID returns the database ID.
-func (d *DbAdmin) ID() string {
+func (d *AstraDbAdmin) ID() string {
 	return d.id
 }
 
@@ -60,7 +60,7 @@ func (d *DbAdmin) ID() string {
 //
 //	info, err := dbAdmin.Info(ctx)
 //	fmt.Println("Status:", info.Status)
-func (d *DbAdmin) Info(ctx context.Context) (*Database, error) {
+func (d *AstraDbAdmin) Info(ctx context.Context) (*DatabaseInfo, error) {
 	return d.admin.GetDatabase(ctx, d.id)
 }
 
@@ -75,7 +75,7 @@ func (d *DbAdmin) Info(ctx context.Context) (*Database, error) {
 // Example:
 //
 //	err := dbAdmin.Drop(ctx)
-func (d *DbAdmin) Drop(ctx context.Context, opts ...options.Builder[options.DropDatabaseOptions]) error {
+func (d *AstraDbAdmin) Drop(ctx context.Context, opts ...options.Builder[options.DropDatabaseOptions]) error {
 	return d.admin.DropDatabase(ctx, d.id, opts...)
 }
 
@@ -85,14 +85,12 @@ func (d *DbAdmin) Drop(ctx context.Context, opts ...options.Builder[options.Drop
 // Example:
 //
 //	keyspaces, err := dbAdmin.ListKeyspaces(ctx)
-func (d *DbAdmin) ListKeyspaces(ctx context.Context) ([]string, error) {
+func (d *AstraDbAdmin) ListKeyspaces(ctx context.Context) ([]string, error) {
 	db, err := d.admin.GetDatabase(ctx, d.id)
 	if err != nil {
 		return nil, err
 	}
-	keyspaces := []string{db.Info.Keyspace}
-	keyspaces = append(keyspaces, db.Info.AdditionalKeyspaces...)
-	return keyspaces, nil
+	return db.Keyspaces, nil
 }
 
 // CreateKeyspace creates a new keyspace in this database.
@@ -103,7 +101,7 @@ func (d *DbAdmin) ListKeyspaces(ctx context.Context) ([]string, error) {
 // Example:
 //
 //	err := dbAdmin.CreateKeyspace(ctx, "my_keyspace")
-func (d *DbAdmin) CreateKeyspace(ctx context.Context, keyspace string, opts ...options.Builder[options.CreateKeyspaceOptions]) error {
+func (d *AstraDbAdmin) CreateKeyspace(ctx context.Context, keyspace string, opts ...options.Builder[options.CreateKeyspaceOptions]) error {
 	merged, err := options.MergeOptions(opts...)
 	if err != nil {
 		return err
@@ -157,7 +155,7 @@ func (d *DbAdmin) CreateKeyspace(ctx context.Context, keyspace string, opts ...o
 // Example:
 //
 //	err := dbAdmin.DropKeyspace(ctx, "my_keyspace")
-func (d *DbAdmin) DropKeyspace(ctx context.Context, keyspace string) error {
+func (d *AstraDbAdmin) DropKeyspace(ctx context.Context, keyspace string) error {
 	cmd := d.admin.createCommand(http.MethodDelete, "/databases/"+d.id+"/keyspaces/"+keyspace, nil)
 	_, err := cmd.execute(ctx)
 	return err

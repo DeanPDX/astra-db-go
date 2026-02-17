@@ -26,8 +26,9 @@ import (
 // Options set on the client are inherited by all databases, collections,
 // tables, and commands created from it, unless overridden at a lower level.
 type DataAPIClient struct {
-	options     *options.APIOptions
-	environment options.Environment
+	options          *options.APIOptions
+	astraEnvironment options.AstraEnvironment
+	dataAPIBackend   options.DataAPIBackend
 }
 
 // NewClient returns a new DataAPIClient with the given options.
@@ -38,18 +39,18 @@ type DataAPIClient struct {
 //	    options.WithToken("AstraCS:..."),
 //	)
 //
-// Example with environment:
+// Example with non-Astra backend:
 //
 //	client := astradb.NewClient(
 //	    options.WithToken("AstraCS:..."),
-//	    options.WithEnvironment(options.EnvironmentHCD),
+//	    options.WithDataAPIBackend(options.DataAPIBackendHCD),
 //	)
 func NewClient(opts ...options.APIOption) *DataAPIClient {
 	apiOpts := options.NewAPIOptions(opts...)
-	env := apiOpts.GetEnvironment()
 	return &DataAPIClient{
-		options:     apiOpts,
-		environment: env,
+		options:          apiOpts,
+		astraEnvironment: apiOpts.GetAstraEnvironment(),
+		dataAPIBackend:   apiOpts.GetDataAPIBackend(),
 	}
 }
 
@@ -91,13 +92,13 @@ func (c *DataAPIClient) Database(endpoint string, opts ...options.APIOption) *Db
 //	}
 //	regions, err := admin.FindAvailableRegions(ctx)
 func (c *DataAPIClient) Admin(opts ...options.APIOption) (*AstraAdmin, error) {
-	if !c.environment.IsAstra() {
-		return nil, fmt.Errorf("Admin is only available in Astra environments (current: %s)", c.environment)
+	if !c.dataAPIBackend.IsAstra() {
+		return nil, fmt.Errorf("Admin is only available with the Astra backend (current: %s)", c.dataAPIBackend)
 	}
 	return &AstraAdmin{
-		client:      c,
-		options:     options.NewAPIOptions(opts...),
-		apiVersion:  DefaultAdminAPIVersion,
-		environment: c.environment,
+		client:           c,
+		options:          options.NewAPIOptions(opts...),
+		apiVersion:       DefaultAdminAPIVersion,
+		astraEnvironment: c.astraEnvironment,
 	}, nil
 }
