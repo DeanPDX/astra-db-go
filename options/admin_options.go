@@ -108,10 +108,10 @@ const (
 
 	// DatabaseStatusNonTerminated is a special filter value for ListDatabases
 	// that returns all databases that are not terminated (default).
-	DatabaseStatusNonTerminated DatabaseStatus = "nonterminated"
+	DatabaseStatusNonTerminated DatabaseStatus = "NONTERMINATED"
 	// DatabaseStatusAll is a special filter value for ListDatabases
 	// that returns all databases regardless of status.
-	DatabaseStatusAll DatabaseStatus = "all"
+	DatabaseStatusAll DatabaseStatus = "ALL"
 )
 
 // CloudProviderFilter controls which databases are returned by ListDatabases based on cloud provider.
