@@ -150,14 +150,9 @@ func (d *AstraDbAdmin) DropKeyspace(ctx context.Context, keyspace string, opts .
 		return err
 	}
 
-	blocking := true
-	if merged != nil && merged.Blocking != nil {
-		blocking = *merged.Blocking
-	}
-
-	if !blocking {
-		return nil
-	}
+    if merged != nil && merged.Blocking != nil && !*merged.Blocking {
+	    return nil
+    }
 
 	pollInterval := options.DefaultKeyspacePollInterval
 	if merged != nil && merged.PollInterval != nil {
