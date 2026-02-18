@@ -503,7 +503,7 @@ func (a *AstraAdmin) CreateDatabase(ctx context.Context, params CreateDatabasePa
 		Tier:          "serverless",
 		CapacityUnits: 1,
 	}
-	if merged != nil && merged.Keyspace != nil {
+	if merged.Keyspace != nil {
 		payload.Keyspace = *merged.Keyspace
 	}
 
@@ -522,24 +522,12 @@ func (a *AstraAdmin) CreateDatabase(ctx context.Context, params CreateDatabasePa
 
 	dbAdmin := a.DbAdmin(dbID)
 
-	// Determine blocking behavior (default: true)
-	blocking := true
-	if merged != nil && merged.Blocking != nil {
-		blocking = *merged.Blocking
-	}
-
-	if !blocking {
+	if !*merged.Blocking {
 		return dbAdmin, nil
 	}
-
 	// Poll until database is ACTIVE
-	pollInterval := options.DefaultDatabasePollInterval
-	if merged != nil && merged.PollInterval != nil {
-		pollInterval = *merged.PollInterval
-	}
-
 	awaitOpts := AwaitStatusOptions{
-		PollInterval: pollInterval,
+		PollInterval: *merged.PollInterval,
 		Target:       DatabaseStatusActive,
 		LegalStates:  []DatabaseStatus{DatabaseStatusInitializing, DatabaseStatusPending, DatabaseStatusAssociating},
 	}
@@ -580,27 +568,14 @@ func (a *AstraAdmin) DropDatabase(ctx context.Context, databaseID string, opts .
 		return err
 	}
 
-	// Determine blocking behavior (default: true)
-	blocking := true
-	if merged != nil && merged.Blocking != nil {
-		blocking = *merged.Blocking
-	}
-
-	if !blocking {
+	if !*merged.Blocking {
 		return nil
 	}
-
-	// Poll until database is terminated or gone
-	pollInterval := options.DefaultDatabasePollInterval
-	if merged != nil && merged.PollInterval != nil {
-		pollInterval = *merged.PollInterval
-	}
-
+	// Poll until database is terminated
 	awaitOpts := AwaitStatusOptions{
-		PollInterval:   pollInterval,
-		Target:         DatabaseStatusTerminated,
-		LegalStates:    []DatabaseStatus{DatabaseStatusTerminating},
-		NotFoundIsDone: true, // Not found likely means the database is gone, so treat it as a success case.
+		PollInterval: *merged.PollInterval,
+		Target:       DatabaseStatusTerminated,
+		LegalStates:  []DatabaseStatus{DatabaseStatusTerminating},
 	}
 
 	return a.awaitStatus(ctx, databaseID, awaitOpts)

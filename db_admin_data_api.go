@@ -68,7 +68,7 @@ func (d *DataAPIDatabaseAdmin) CreateKeyspace(ctx context.Context, keyspace stri
 	}
 
 	payload := createKeyspacePayload{Name: keyspace}
-	if merged != nil && merged.ReplicationFactor != nil {
+	if merged.ReplicationFactor != nil {
 		payload.Options = &createKeyspacePayloadOptions{
 			Replication: replicationOptions{
 				Class:             "SimpleStrategy",

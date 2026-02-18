@@ -14,7 +14,11 @@
 
 package options
 
-import "time"
+import (
+	"time"
+
+	"github.com/datastax/astra-db-go/internal/ptr"
+)
 
 // DefaultDatabasePollInterval is the default interval for polling database status.
 const DefaultDatabasePollInterval = 10 * time.Second
@@ -211,6 +215,12 @@ type CreateDatabaseOptions struct {
 	PollInterval *time.Duration
 }
 
+// SetDefaults implements the Defaulter interface for CreateDatabaseOptions.
+func (o *CreateDatabaseOptions) SetDefaults() {
+	o.Blocking = ptr.To(true)
+	o.PollInterval = ptr.To(DefaultDatabasePollInterval)
+}
+
 // Validate implements the Validator interface for CreateDatabaseOptions.
 func (o CreateDatabaseOptions) Validate() error {
 	return nil
@@ -272,6 +282,12 @@ type DropDatabaseOptions struct {
 	PollInterval *time.Duration
 }
 
+// SetDefaults implements the Defaulter interface for DropDatabaseOptions.
+func (o *DropDatabaseOptions) SetDefaults() {
+	o.Blocking = ptr.To(true)
+	o.PollInterval = ptr.To(DefaultDatabasePollInterval)
+}
+
 // Validate implements the Validator interface for DropDatabaseOptions.
 func (o DropDatabaseOptions) Validate() error {
 	return nil
@@ -326,6 +342,12 @@ type CreateKeyspaceOptions struct {
 	// ReplicationFactor sets the replication factor for the keyspace.
 	// Only used by the Data API path (non-Astra environments).
 	ReplicationFactor *int
+}
+
+// SetDefaults implements the Defaulter interface for CreateKeyspaceOptions.
+func (o *CreateKeyspaceOptions) SetDefaults() {
+	o.Blocking = ptr.To(true)
+	o.PollInterval = ptr.To(DefaultKeyspacePollInterval)
 }
 
 // Validate implements the Validator interface for CreateKeyspaceOptions.
@@ -388,6 +410,12 @@ type DropKeyspaceOptions struct {
 	// PollInterval is how often to check the keyspace status when blocking.
 	// Defaults to DefaultKeyspacePollInterval (1 second).
 	PollInterval *time.Duration
+}
+
+// SetDefaults implements the Defaulter interface for DropKeyspaceOptions.
+func (o *DropKeyspaceOptions) SetDefaults() {
+	o.Blocking = ptr.To(true)
+	o.PollInterval = ptr.To(DefaultKeyspacePollInterval)
 }
 
 // Validate implements the Validator interface for DropKeyspaceOptions.
