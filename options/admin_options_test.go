@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/datastax/astra-db-go/internal/ptr"
 	"github.com/datastax/astra-db-go/options"
 )
 
@@ -143,5 +144,24 @@ func TestDropKeyspace_MergeMultiple(t *testing.T) {
 	}
 	if opts.PollInterval == nil || *opts.PollInterval != 5*time.Second {
 		t.Errorf("expected PollInterval to be 5s, got %v", opts.PollInterval)
+	}
+}
+
+func TestDropKeyspace_WithDirectStruct(t *testing.T) {
+	// Make sure direct struct can be merged and that defaults are applied for missing fields
+	opts, err := options.MergeOptions(
+		&options.DropKeyspaceOptions{PollInterval: ptr.To(10 * time.Minute)},
+	)
+	if err != nil {
+		t.Fatalf("failed to merge options: %v", err)
+	}
+	if opts == nil {
+		t.Fatal("expected non-nil options")
+	}
+	if opts.Blocking == nil || *opts.Blocking != true {
+		t.Errorf("expected Blocking to be true, got %v", opts.Blocking)
+	}
+	if opts.PollInterval == nil || *opts.PollInterval != 10*time.Minute {
+		t.Errorf("expected PollInterval to be 10m, got %v", opts.PollInterval)
 	}
 }
