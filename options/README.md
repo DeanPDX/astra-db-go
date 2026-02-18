@@ -24,6 +24,8 @@ func (o SimpleOptions) Validate() error {
 }
 ```
 
+And here's the `builder` pattern:
+
 ```go
 // SimpleOptionsBuilder is a builder for SimpleOptions.
 type SimpleOptionsBuilder struct {
