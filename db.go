@@ -113,7 +113,8 @@ func (d *Db) DropCollection(ctx context.Context, name string) error {
 func (d *Db) DatabaseAdmin() (DatabaseAdmin, error) {
 	// Astra backends use the DevOps API.
 	if d.client.dataAPIBackend.IsAstra() {
-		admin, err := d.client.Admin()
+		env := options.ParseAstraEnvironmentFromEndpoint(d.endpoint)
+		admin, err := d.client.Admin(options.WithAstraEnvironment(env))
 		if err != nil {
 			return nil, err
 		}

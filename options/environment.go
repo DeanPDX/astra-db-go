@@ -14,7 +14,11 @@
 
 package options
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+	"strings"
+)
 
 // AstraEnvironment represents which Astra environment to target (controls DevOps API URL).
 type AstraEnvironment string
@@ -49,6 +53,26 @@ func (e AstraEnvironment) AstraDBEndpoint(id, region string) string {
 		return fmt.Sprintf("https://%s-%s.apps.test.astra.datastax.com", id, region)
 	default:
 		return fmt.Sprintf("https://%s-%s.apps.astra.datastax.com", id, region)
+	}
+}
+
+// ParseAstraEnvironmentFromEndpoint detects the AstraEnvironment from an endpoint URL's hostname.
+// Returns AstraEnvironmentDev for *.apps.dev.astra.datastax.com,
+// AstraEnvironmentTest for *.apps.test.astra.datastax.com,
+// and AstraEnvironmentProd for everything else.
+func ParseAstraEnvironmentFromEndpoint(endpoint string) AstraEnvironment {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return AstraEnvironmentProd
+	}
+	host := strings.ToLower(u.Hostname())
+	switch {
+	case strings.HasSuffix(host, ".apps.dev.astra.datastax.com"):
+		return AstraEnvironmentDev
+	case strings.HasSuffix(host, ".apps.test.astra.datastax.com"):
+		return AstraEnvironmentTest
+	default:
+		return AstraEnvironmentProd
 	}
 }
 

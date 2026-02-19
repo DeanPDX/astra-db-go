@@ -185,6 +185,45 @@ func TestSTuff(t *testing.T) {
 	}
 }
 
+func TestAdminEnvironmentDefaultsProd(t *testing.T) {
+	client := NewClient(options.WithToken("token"))
+	admin, err := client.Admin()
+	if err != nil {
+		t.Fatalf("Admin() returned unexpected error: %v", err)
+	}
+	if admin.astraEnvironment != options.AstraEnvironmentProd {
+		t.Errorf("expected prod environment, got %s", admin.astraEnvironment)
+	}
+}
+
+func TestAdminEnvironmentFromClientOptions(t *testing.T) {
+	client := NewClient(
+		options.WithToken("token"),
+		options.WithAstraEnvironment(options.AstraEnvironmentDev),
+	)
+	admin, err := client.Admin()
+	if err != nil {
+		t.Fatalf("Admin() returned unexpected error: %v", err)
+	}
+	if admin.astraEnvironment != options.AstraEnvironmentDev {
+		t.Errorf("expected dev environment, got %s", admin.astraEnvironment)
+	}
+}
+
+func TestAdminEnvironmentOverriddenAtAdminLevel(t *testing.T) {
+	client := NewClient(
+		options.WithToken("token"),
+		options.WithAstraEnvironment(options.AstraEnvironmentDev),
+	)
+	admin, err := client.Admin(options.WithAstraEnvironment(options.AstraEnvironmentTest))
+	if err != nil {
+		t.Fatalf("Admin() returned unexpected error: %v", err)
+	}
+	if admin.astraEnvironment != options.AstraEnvironmentTest {
+		t.Errorf("expected test environment, got %s", admin.astraEnvironment)
+	}
+}
+
 func TestAdminNotAvailableForNonAstra(t *testing.T) {
 	client := NewClient(
 		options.WithToken("token"),

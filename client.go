@@ -26,9 +26,8 @@ import (
 // Options set on the client are inherited by all databases, collections,
 // tables, and commands created from it, unless overridden at a lower level.
 type DataAPIClient struct {
-	options          *options.APIOptions
-	astraEnvironment options.AstraEnvironment
-	dataAPIBackend   options.DataAPIBackend
+	options        *options.APIOptions
+	dataAPIBackend options.DataAPIBackend
 }
 
 // NewClient returns a new DataAPIClient with the given options.
@@ -48,9 +47,8 @@ type DataAPIClient struct {
 func NewClient(opts ...options.APIOption) *DataAPIClient {
 	apiOpts := options.NewAPIOptions(opts...)
 	return &DataAPIClient{
-		options:          apiOpts,
-		astraEnvironment: apiOpts.GetAstraEnvironment(),
-		dataAPIBackend:   apiOpts.GetDataAPIBackend(),
+		options:        apiOpts,
+		dataAPIBackend: apiOpts.GetDataAPIBackend(),
 	}
 }
 
@@ -95,10 +93,12 @@ func (c *DataAPIClient) Admin(opts ...options.APIOption) (*AstraAdmin, error) {
 	if !c.dataAPIBackend.IsAstra() {
 		return nil, fmt.Errorf("Admin is only available with the Astra backend (current: %s)", c.dataAPIBackend)
 	}
+	adminOpts := options.NewAPIOptions(opts...)
+	env := options.Merge(c.options, adminOpts).GetAstraEnvironment()
 	return &AstraAdmin{
 		client:           c,
-		options:          options.NewAPIOptions(opts...),
+		options:          adminOpts,
 		apiVersion:       DefaultAdminAPIVersion,
-		astraEnvironment: c.astraEnvironment,
+		astraEnvironment: env,
 	}, nil
 }
