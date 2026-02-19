@@ -15,7 +15,11 @@
 package astradb
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/datastax/astra-db-go/options"
+	"github.com/datastax/astra-db-go/results"
 )
 
 // Example response when your application is resuming
@@ -53,5 +57,88 @@ func TestCommandWarnings(t *testing.T) {
 	const expected = 2
 	if len(warnings) != expected {
 		t.Errorf("Expected %d warnings but got: %d", expected, len(warnings))
+	}
+}
+
+func TestMarshalJSONWithName(t *testing.T) {
+	cmd := command{
+		name:    "createCollection",
+		payload: map[string]any{"name": "my_collection"},
+	}
+	got, err := json.Marshal(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := `{"createCollection":{"name":"my_collection"}}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, string(got))
+	}
+}
+
+func TestMarshalJSONWithoutName(t *testing.T) {
+	cmd := command{
+		payload: map[string]string{"key": "value"},
+	}
+	got, err := json.Marshal(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := `{"key":"value"}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, string(got))
+	}
+}
+
+func TestExtractErrorsWarningHandler(t *testing.T) {
+	var called int
+	handler := func(w results.Warning) {
+		called++
+	}
+	opts := options.NewAPIOptions(options.WithWarningHandler(handler))
+
+	cmd := command{}
+	_, _, err := cmd.ExtractErrors(200, []byte(warningsResponse), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called != 2 {
+		t.Errorf("expected warning handler called 2 times, got %d", called)
+	}
+}
+
+func TestURLDatabaseAdmin(t *testing.T) {
+	db := &Db{
+		endpoint: "https://db-id-us-east-1.apps.astra.datastax.com",
+	}
+	cmd := newDatabaseAdminCmd(db, "findKeyspaces", nil)
+	got, err := cmd.url()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "https://db-id-us-east-1.apps.astra.datastax.com/api/json/v1"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestURLNonAstraBackend(t *testing.T) {
+	hcd := options.DataAPIBackendHCD
+	db := &Db{
+		endpoint: "http://localhost:8181",
+		options:  &options.APIOptions{DataAPIBackend: &hcd},
+	}
+	cmd := command{
+		db:           db,
+		name:         "find",
+		resourceName: "my_collection",
+	}
+	got, err := cmd.url()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Non-astra: no "api/json" prefix, just version/keyspace/resource
+	expected := "http://localhost:8181/v1/default_keyspace/my_collection"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
 	}
 }
