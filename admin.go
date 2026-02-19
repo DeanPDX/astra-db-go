@@ -17,7 +17,6 @@ package astradb
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -394,8 +393,6 @@ type AwaitStatusOptions struct {
 	Target DatabaseStatus
 	// Legal statuses that DB can/will enter before entering target status.
 	LegalStates []DatabaseStatus
-	// If true, a not found error is treated as a success. Used by DropDatabase where a 404 means the database is gone.
-	NotFoundIsDone bool
 }
 
 // Case-insensitive compare out of an abundance of caution
@@ -433,10 +430,6 @@ func (a *AstraAdmin) awaitStatus(ctx context.Context, databaseID string, opts Aw
 		case <-ticker.C:
 			db, err := a.GetDatabase(ctx, databaseID)
 			if err != nil {
-				// If not found = done, don't return not found error.
-				if opts.NotFoundIsDone && errors.Is(err, ErrNotFound) {
-					return nil
-				}
 				return err
 			}
 			if db.Status == opts.Target {
