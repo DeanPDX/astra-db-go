@@ -36,6 +36,7 @@ type command struct {
 	keyspace        string
 	apiVersion      string
 	resourceName    string
+	databaseAdmin   bool                // When true, URL skips keyspace and resource segments
 	resourceOptions *options.APIOptions // Options from the collection/table level
 	commandOptions  *options.APIOptions // Options for this specific command
 }
@@ -46,6 +47,17 @@ func newCmd(d *Db, name string, payload any) command {
 		db:      d,
 		name:    name,
 		payload: payload,
+	}
+}
+
+// newDatabaseAdminCmd creates a new command for database-level admin operations.
+// The URL will be {endpoint}/api/json/{version} with no keyspace or resource segments.
+func newDatabaseAdminCmd(db *Db, name string, payload any) command {
+	return command{
+		db:            db,
+		name:          name,
+		payload:       payload,
+		databaseAdmin: true,
 	}
 }
 
@@ -123,7 +135,11 @@ func (c *command) url() (string, error) {
 	if len(c.db.Endpoint()) == 0 {
 		return "", errors.New("empty API endpoint")
 	}
-	return url.JoinPath(c.db.Endpoint(), "/api/json", c.ApiVersion(), c.Keyspace(), c.resourceName)
+	basePath := c.resolveOptions().GetDataAPIBackend().DataAPIPath()
+	if c.databaseAdmin {
+		return url.JoinPath(c.db.Endpoint(), basePath, c.ApiVersion())
+	}
+	return url.JoinPath(c.db.Endpoint(), basePath, c.ApiVersion(), c.Keyspace(), c.resourceName)
 }
 
 // This is similar to the [.NET client]. If we have a command name we want to

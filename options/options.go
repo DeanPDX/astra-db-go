@@ -12,12 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package options provides options, types, and utilities for Astra DB operations.
 package options
 
 import "reflect"
 
 type Validator interface {
 	Validate() error
+}
+
+// Defaulter is an optional interface that options types can implement
+// to populate default values. If a type implements Defaulter, MergeOptions
+// calls SetDefaults before applying user-provided setters, so user values
+// always override defaults.
+type Defaulter interface {
+	SetDefaults()
 }
 
 // Builder is an interface that wraps a List method to return a
@@ -39,9 +48,14 @@ func NoopBuilder[T any](src *T) []func(*T) {
 
 // MergeOptions merges multiple Builder options into a single options struct.
 // It applies each option's setters sequentially, with later options overriding
-// earlier ones for the same fields. Calls `Validate` on the result and returns errors.
+// earlier ones for the same fields. Calls `Validate` on the result and returns
+// errors (if any).
+// Note: result will never be nil.
 func MergeOptions[T Validator](opts ...Builder[T]) (*T, error) {
 	result := new(T)
+	if d, ok := any(result).(Defaulter); ok {
+		d.SetDefaults()
+	}
 	for _, opt := range opts {
 		if opt == nil {
 			continue

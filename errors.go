@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ErrNotFound is returned when a document is not found.
+// ErrNotFound is returned when a command returns "not found".
 var ErrNotFound error = errors.New("not found")
 
 // ErrNil is returned when an argument is nil.

@@ -173,7 +173,7 @@ func TestWithTimeout(t *testing.T) {
 }
 
 func TestWithAPIVersion(t *testing.T) {
-	version := "v2"
+	version := "vdoesntexist"
 
 	opts := options.NewAPIOptions(options.WithAPIVersion(version))
 

@@ -27,6 +27,12 @@ func Environment() TestEnv {
 	return c
 }
 
+func (e *TestEnv) DefaultClient() *astradb.DataAPIClient {
+	return astradb.NewClient(
+		options.WithToken(e.ApplicationToken),
+	)
+}
+
 // DefaultDb returns a Db handle configured with the test environment settings.
 func (e *TestEnv) DefaultDb() *astradb.Db {
 	client := astradb.NewClient(
