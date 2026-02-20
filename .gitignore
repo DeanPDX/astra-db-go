@@ -28,6 +28,10 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
 logs/
+
+# Goland files
+*.iml
+*.ipr
+*.iws
+.idea/
