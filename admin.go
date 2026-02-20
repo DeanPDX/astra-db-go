@@ -108,8 +108,9 @@ type DatabaseInfo struct {
 	Keyspaces []string
 	// CloudProvider is the cloud provider (e.g., "aws", "gcp", "azure").
 	CloudProvider string
-	// Region is the deployment region.
-	Region string
+	// Regions contains information about the regions where the database is deployed.
+	// It will have at least one value, and may have more for multi-region deployments.
+	Regions []AstraDatabaseRegionInfo
 	// Environment is the Astra environment.
 	Environment options.AstraEnvironment
 	// CreatedAt is when the database was created.
@@ -125,41 +126,100 @@ type DatabaseInfo struct {
 	Raw *rawDatabaseResponse
 }
 
+// AstraDatabaseRegionInfo represents information about a region in which an Astra database is hosted.
+//
+// This includes the region name, the API endpoint to use when interacting with that region, and the created-at timestamp.
+//
+// Used within the regions field of DatabaseInfo or similar types, which may include multiple region entries for multi-region databases.
+type AstraDatabaseRegionInfo struct {
+	// Name is the name of the region where the database is hosted, e.g. "us-east1".
+	Name string `json:"name"`
+	// APIEndpoint is the API endpoint for the region, e.g. "https://<db-id>-<region>.apps.astra.datastax.com".
+	APIEndpoint string `json:"apiEndpoint"`
+	// CreatedAt is the timestamp representing when this region was created.
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 // rawDatabaseResponse represents the full database response from the DevOps API.
 // Used internally for JSON deserialization; the curated [DatabaseInfo] is the public type.
 type rawDatabaseResponse struct {
-	// ID is the unique database identifier.
-	ID string `json:"id"`
-	// OrgID is the organization identifier.
-	OrgID string `json:"orgId"`
-	// OwnerID is the owner's identifier.
-	OwnerID string `json:"ownerId"`
-	// Info contains database configuration details.
-	Info rawDatabaseDetails `json:"info"`
-	// CreationTime is when the database was created.
-	CreationTime string `json:"creationTime"`
-	// TerminationTime is when the database was terminated (if applicable).
-	TerminationTime string `json:"terminationTime,omitempty"`
-	// LastUsageTime is when the database was last used.
-	LastUsageTime string `json:"lastUsageTime,omitempty"`
-	// Status is the current database status.
-	Status DatabaseStatus `json:"status"`
-}
-
-// rawDatabaseDetails contains the nested info object from the database response.
-type rawDatabaseDetails struct {
-	// Name is the database name.
-	Name string `json:"name"`
-	// Keyspace is the default keyspace.
-	Keyspace string `json:"keyspace"`
-	// CloudProvider is the cloud provider.
-	CloudProvider string `json:"cloudProvider"`
-	// Region is the deployment region.
-	Region string `json:"region"`
-	// AdditionalKeyspaces lists extra keyspaces.
-	AdditionalKeyspaces []string `json:"additionalKeyspaces"`
-	// DbType is the database type (e.g., "vector").
-	DbType string `json:"dbType"`
+	AvailableActions []string `json:"availableActions"`
+	Cost             struct {
+		CostPerDayCents         int     `json:"costPerDayCents"`
+		CostPerDayMRCents       int     `json:"costPerDayMRCents"`
+		CostPerDayParkedCents   int     `json:"costPerDayParkedCents"`
+		CostPerHourCents        int     `json:"costPerHourCents"`
+		CostPerHourMRCents      int     `json:"costPerHourMRCents"`
+		CostPerHourParkedCents  int     `json:"costPerHourParkedCents"`
+		CostPerMinCents         int     `json:"costPerMinCents"`
+		CostPerMinMRCents       int     `json:"costPerMinMRCents"`
+		CostPerMinParkedCents   int     `json:"costPerMinParkedCents"`
+		CostPerMonthCents       int     `json:"costPerMonthCents"`
+		CostPerMonthMRCents     int     `json:"costPerMonthMRCents"`
+		CostPerMonthParkedCents int     `json:"costPerMonthParkedCents"`
+		CostPerNetworkGbCents   int     `json:"costPerNetworkGbCents"`
+		CostPerReadGbCents      float64 `json:"costPerReadGbCents"`
+		CostPerWrittenGbCents   float64 `json:"costPerWrittenGbCents"`
+	} `json:"cost"`
+	CqlshURL        string    `json:"cqlshUrl"`
+	CreationTime    time.Time `json:"creationTime"`
+	DataEndpointURL string    `json:"dataEndpointUrl"`
+	GrafanaURL      string    `json:"grafanaUrl"`
+	GraphqlURL      string    `json:"graphqlUrl"`
+	ID              string    `json:"id"`
+	Info            struct {
+		AdditionalKeyspaces []string `json:"additionalKeyspaces"`
+		CapacityUnits       int      `json:"capacityUnits"`
+		CloudProvider       string   `json:"cloudProvider"`
+		Datacenters         []struct {
+			CapacityUnits                         int       `json:"capacityUnits"`
+			CloudAccount                          string    `json:"cloudAccount"`
+			CloudProvider                         string    `json:"cloudProvider"`
+			DateCreated                           time.Time `json:"dateCreated"`
+			ID                                    string    `json:"id"`
+			IsPrimary                             bool      `json:"isPrimary"`
+			Name                                  string    `json:"name"`
+			Region                                string    `json:"region"`
+			RegionClassification                  string    `json:"regionClassification"`
+			RegionZone                            string    `json:"regionZone"`
+			RequestedNodeCount                    int       `json:"requestedNodeCount"`
+			SecureBundleInternalURL               string    `json:"secureBundleInternalUrl"`
+			SecureBundleMigrationProxyInternalURL string    `json:"secureBundleMigrationProxyInternalUrl"`
+			SecureBundleMigrationProxyURL         string    `json:"secureBundleMigrationProxyUrl"`
+			SecureBundleURL                       string    `json:"secureBundleUrl"`
+			Status                                string    `json:"status"`
+			StreamingTenant                       struct {
+				StreamingClusterName string `json:"streamingClusterName"`
+				StreamingTenantName  string `json:"streamingTenantName"`
+			} `json:"streamingTenant"`
+			TargetAccount string `json:"targetAccount"`
+			Tier          string `json:"tier"`
+		} `json:"datacenters"`
+		DbType    string   `json:"dbType"`
+		Keyspace  string   `json:"keyspace"`
+		Keyspaces []string `json:"keyspaces"`
+		Name      string   `json:"name"`
+		Region    string   `json:"region"`
+		Tier      string   `json:"tier"`
+	} `json:"info"`
+	LastUsageTime time.Time `json:"lastUsageTime"`
+	Metrics       struct {
+		ErrorsTotalCount        int `json:"errorsTotalCount"`
+		LiveDataSizeBytes       int `json:"liveDataSizeBytes"`
+		ReadRequestsTotalCount  int `json:"readRequestsTotalCount"`
+		WriteRequestsTotalCount int `json:"writeRequestsTotalCount"`
+	} `json:"metrics"`
+	ObservedStatus string                 `json:"observedStatus"`
+	OrgID          string                 `json:"orgId"`
+	OwnerID        string                 `json:"ownerId"`
+	Status         options.DatabaseStatus `json:"status"`
+	Storage        struct {
+		DisplayStorage    int `json:"displayStorage"`
+		NodeCount         int `json:"nodeCount"`
+		ReplicationFactor int `json:"replicationFactor"`
+		TotalStorage      int `json:"totalStorage"`
+	} `json:"storage"`
+	TerminationTime time.Time `json:"terminationTime"`
 }
 
 // toDatabaseInfo converts a raw DevOps API response to the curated DatabaseInfo.
@@ -170,8 +230,14 @@ func (r *rawDatabaseResponse) toDatabaseInfo(env options.AstraEnvironment) *Data
 	}
 	keyspaces = append(keyspaces, r.Info.AdditionalKeyspaces...)
 
-	createdAt, _ := time.Parse(time.RFC3339, r.CreationTime)
-	lastUsed, _ := time.Parse(time.RFC3339, r.LastUsageTime)
+	regions := make([]AstraDatabaseRegionInfo, len(r.Info.Datacenters))
+	for i, dc := range r.Info.Datacenters {
+		regions[i] = AstraDatabaseRegionInfo{
+			Name:        dc.Region,
+			APIEndpoint: env.AstraDBEndpoint(r.ID, dc.Region),
+			CreatedAt:   dc.DateCreated,
+		}
+	}
 
 	return &DatabaseInfo{
 		ID:            r.ID,
@@ -179,10 +245,10 @@ func (r *rawDatabaseResponse) toDatabaseInfo(env options.AstraEnvironment) *Data
 		Status:        r.Status,
 		Keyspaces:     keyspaces,
 		CloudProvider: r.Info.CloudProvider,
-		Region:        r.Info.Region,
+		Regions:       regions,
 		Environment:   env,
-		CreatedAt:     createdAt,
-		LastUsed:      lastUsed,
+		CreatedAt:     r.CreationTime,
+		LastUsed:      r.LastUsageTime,
 		OrgID:         r.OrgID,
 		OwnerID:       r.OwnerID,
 		Raw:           r,

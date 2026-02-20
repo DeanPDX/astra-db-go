@@ -64,11 +64,6 @@ func AdminListDatabases(e *harness.TestEnv) error {
 		return fmt.Errorf("ListDatabases failed: %w", err)
 	}
 	slog.Info("Listed databases", "count", len(databases))
-
-	for _, db := range databases {
-		slog.Info("Database", "id", db.ID, "name", db.Name, "status", db.Status, "provider", db.CloudProvider, "region", db.Region)
-	}
-
 	return nil
 }
 
@@ -171,7 +166,6 @@ func AdminKeyspaceCreateListDrop(e *harness.TestEnv) error {
 	}
 
 	db := databases[0]
-	slog.Info("Using database for keyspace tests", "id", db.ID, "name", db.Name, "region", db.Region)
 
 	// Get an AstraDbAdmin for this database
 	dbAdmin := admin.DbAdmin(db.ID)

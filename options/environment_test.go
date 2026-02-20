@@ -29,12 +29,12 @@ func TestParseAstraEnvironmentFromEndpoint(t *testing.T) {
 		},
 		{
 			name:     "dev endpoint",
-			endpoint: "https://abc-def.apps.dev.astra.datastax.com",
+			endpoint: "https://abc-def.apps.astra-dev.datastax.com",
 			want:     AstraEnvironmentDev,
 		},
 		{
 			name:     "test endpoint",
-			endpoint: "https://abc-def.apps.test.astra.datastax.com",
+			endpoint: "https://abc-def.apps.astra-test.datastax.com",
 			want:     AstraEnvironmentTest,
 		},
 		{
@@ -59,7 +59,7 @@ func TestParseAstraEnvironmentFromEndpoint(t *testing.T) {
 		},
 		{
 			name:     "dev endpoint with port",
-			endpoint: "https://abc-def.apps.dev.astra.datastax.com:443",
+			endpoint: "https://abc-def.apps.astra-dev.datastax.com:443",
 			want:     AstraEnvironmentDev,
 		},
 	}

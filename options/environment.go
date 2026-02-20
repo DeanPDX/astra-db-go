@@ -48,17 +48,17 @@ func (e AstraEnvironment) DevOpsURL() string {
 func (e AstraEnvironment) AstraDBEndpoint(id, region string) string {
 	switch e {
 	case AstraEnvironmentDev:
-		return fmt.Sprintf("https://%s-%s.apps.dev.astra.datastax.com", id, region)
+		return fmt.Sprintf("https://%s-%s.apps.astra-dev.datastax.com", id, region)
 	case AstraEnvironmentTest:
-		return fmt.Sprintf("https://%s-%s.apps.test.astra.datastax.com", id, region)
+		return fmt.Sprintf("https://%s-%s.apps.astra-test.datastax.com", id, region)
 	default:
 		return fmt.Sprintf("https://%s-%s.apps.astra.datastax.com", id, region)
 	}
 }
 
 // ParseAstraEnvironmentFromEndpoint detects the AstraEnvironment from an endpoint URL's hostname.
-// Returns AstraEnvironmentDev for *.apps.dev.astra.datastax.com,
-// AstraEnvironmentTest for *.apps.test.astra.datastax.com,
+// Returns AstraEnvironmentDev for *.apps.astra-dev.datastax.com,
+// AstraEnvironmentTest for *.apps.astra-test.datastax.com,
 // and AstraEnvironmentProd for everything else.
 func ParseAstraEnvironmentFromEndpoint(endpoint string) AstraEnvironment {
 	u, err := url.Parse(endpoint)
@@ -67,9 +67,9 @@ func ParseAstraEnvironmentFromEndpoint(endpoint string) AstraEnvironment {
 	}
 	host := strings.ToLower(u.Hostname())
 	switch {
-	case strings.HasSuffix(host, ".apps.dev.astra.datastax.com"):
+	case strings.HasSuffix(host, ".apps.astra-dev.datastax.com"):
 		return AstraEnvironmentDev
-	case strings.HasSuffix(host, ".apps.test.astra.datastax.com"):
+	case strings.HasSuffix(host, ".apps.astra-test.datastax.com"):
 		return AstraEnvironmentTest
 	default:
 		return AstraEnvironmentProd
