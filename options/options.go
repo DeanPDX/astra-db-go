@@ -57,7 +57,12 @@ func MergeOptions[T Validator](opts ...Builder[T]) (*T, error) {
 		d.SetDefaults()
 	}
 	for _, opt := range opts {
-		if opt == nil {
+		// Guard against both plain nil and typed nil (a non-nil interface
+		// wrapping a nil concrete pointer), which can happen when a caller
+		// declares a typed builder variable but never initializes it.
+		// See also: TestMergeOptions_TypedNilBuilder - which will panic
+		// without this check.
+		if opt == nil || reflect.ValueOf(opt).IsNil() {
 			continue
 		}
 		for _, setter := range opt.List() {
@@ -76,8 +81,11 @@ func copyNonNilFields[T any](src, dst *T) {
 
 	for i := 0; i < srcVal.NumField(); i++ {
 		srcField := srcVal.Field(i)
-		if srcField.Kind() == reflect.Pointer && !srcField.IsNil() {
-			dstVal.Field(i).Set(srcField)
+		switch srcField.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Interface:
+			if !srcField.IsNil() {
+				dstVal.Field(i).Set(srcField)
+			}
 		}
 	}
 }

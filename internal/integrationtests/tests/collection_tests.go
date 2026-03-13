@@ -12,6 +12,7 @@ import (
 	"github.com/datastax/astra-db-go/filter"
 	"github.com/datastax/astra-db-go/internal/integrationtests/harness"
 	"github.com/datastax/astra-db-go/options"
+	"github.com/datastax/astra-db-go/ptr"
 	"github.com/datastax/astra-db-go/results"
 )
 
@@ -26,6 +27,9 @@ func init() {
 		{Name: "CollectionFind", Run: CollectionFind},
 		{Name: "CollectionFindOne", Run: CollectionFindOne},
 		{Name: "CollectionCursorPagination", Run: CollectionCursorPagination},
+		{Name: "CollectionUpdateOne", Run: CollectionUpdateOne},
+		{Name: "CollectionUpdateOneUpsert", Run: CollectionUpdateOneUpsert},
+		{Name: "CollectionUpdateOneNoMatch", Run: CollectionUpdateOneNoMatch},
 		{Name: "CollectionDrop", Run: CollectionDrop},
 		// Vector search tests
 		{Name: "CollectionVectorCreate", Run: CollectionVectorCreate},
@@ -304,6 +308,122 @@ func CollectionCursorPagination(e *harness.TestEnv) error {
 	return nil
 }
 
+func CollectionUpdateOne(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document to update
+	original := SimpleObject{Name: "UpdateOneOriginal"}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	insertedID := resp.Status.InsertedIds[0]
+
+	// Update the document's name
+	result, err := c.UpdateOne(ctx, filter.F{"_id": insertedID}, map[string]any{
+		"$set": map[string]any{"name": "UpdateOneModified"},
+	})
+	if err != nil {
+		return fmt.Errorf("UpdateOne failed: %w", err)
+	}
+
+	if result.MatchedCount != 1 {
+		return fmt.Errorf("expected MatchedCount 1, got %d", result.MatchedCount)
+	}
+	if result.ModifiedCount != 1 {
+		return fmt.Errorf("expected ModifiedCount 1, got %d", result.ModifiedCount)
+	}
+	if result.UpsertedCount != 0 {
+		return fmt.Errorf("expected UpsertedCount 0, got %d", result.UpsertedCount)
+	}
+
+	// Verify the update by reading back
+	var doc SimpleObject
+	if err := c.FindOne(ctx, filter.F{"_id": insertedID}).Decode(&doc); err != nil {
+		return fmt.Errorf("FindOne after update failed: %w", err)
+	}
+	if doc.Name != "UpdateOneModified" {
+		return fmt.Errorf("expected name 'UpdateOneModified', got '%s'", doc.Name)
+	}
+
+	return nil
+}
+
+func CollectionUpdateOneUpsert(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Adding timestamp so this test survives retries. At some point, it might be good
+	// to either make ALL tests survive retries, or add a "cleanup" flag to tests that
+	// indicate they should run even if other tests fail. Or maybe it is more like we
+	// make these grouped tests "suites" and we have setup and teardown functions for
+	// suites.
+	upsertID := fmt.Sprintf("upsert-test-id-%d", time.Now().Unix())
+
+	// Upsert a document that doesn't exist
+	result, err := c.UpdateOne(ctx,
+		filter.F{"_id": upsertID},
+		map[string]any{"$set": map[string]any{"name": "UpsertedDoc"}},
+		options.CollectionUpdateOne().SetUpsert(true),
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateOne upsert failed: %w", err)
+	}
+
+	if result.MatchedCount != 0 {
+		return fmt.Errorf("expected MatchedCount 0, got %d", result.MatchedCount)
+	}
+	if result.ModifiedCount != 0 {
+		return fmt.Errorf("expected ModifiedCount 0, got %d", result.ModifiedCount)
+	}
+	if result.UpsertedCount != 1 {
+		return fmt.Errorf("expected UpsertedCount 1, got %d", result.UpsertedCount)
+	}
+	if result.UpsertedId == nil {
+		return errors.New("expected UpsertedId to be non-nil")
+	}
+
+	// Verify the upserted document
+	var doc SimpleObject
+	if err := c.FindOne(ctx, filter.F{"_id": upsertID}).Decode(&doc); err != nil {
+		return fmt.Errorf("FindOne after upsert failed: %w", err)
+	}
+	if doc.Name != "UpsertedDoc" {
+		return fmt.Errorf("expected name 'UpsertedDoc', got '%s'", doc.Name)
+	}
+
+	return nil
+}
+
+func CollectionUpdateOneNoMatch(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	result, err := c.UpdateOne(ctx,
+		filter.F{"_id": "nonexistent-id-xyz"},
+		map[string]any{"$set": map[string]any{"name": "ShouldNotExist"}},
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateOne no-match failed: %w", err)
+	}
+
+	if result.MatchedCount != 0 {
+		return fmt.Errorf("expected MatchedCount 0, got %d", result.MatchedCount)
+	}
+	if result.ModifiedCount != 0 {
+		return fmt.Errorf("expected ModifiedCount 0, got %d", result.ModifiedCount)
+	}
+	if result.UpsertedCount != 0 {
+		return fmt.Errorf("expected UpsertedCount 0, got %d", result.UpsertedCount)
+	}
+
+	return nil
+}
+
 func CollectionDrop(e *harness.TestEnv) error {
 	ctx := context.Background()
 	db := e.DefaultDb()
@@ -346,8 +466,8 @@ func CollectionVectorCreate(e *harness.TestEnv) error {
 	// Create a collection with vector support
 	_, err := db.CreateCollection(ctx, vectorCollectionName,
 		options.CreateCollection().SetVector(&options.VectorOptions{
-			Dimension: vectorDimension,
-			Metric:    "cosine",
+			Dimension: ptr.To(vectorDimension),
+			Metric:    ptr.To("cosine"),
 		}))
 	if err != nil {
 		return fmt.Errorf("failed to create vector collection: %w", err)
@@ -437,8 +557,9 @@ func CollectionVectorSearch(e *harness.TestEnv) error {
 	searchVector := []float32{0.1, 0.2, 0.3}
 
 	cursor := c.Find(ctx, filter.F{},
-		options.WithCollectionSort(map[string]any{"$vector": searchVector}),
-		options.WithCollectionLimit(3),
+		options.CollectionFind().
+			SetSort(map[string]any{"$vector": searchVector}).
+			SetLimit(3),
 	)
 	defer cursor.Close(ctx)
 
@@ -475,9 +596,10 @@ func CollectionVectorSearchWithSimilarity(e *harness.TestEnv) error {
 	searchVector := []float32{0.1, 0.2, 0.3}
 
 	cursor := c.Find(ctx, filter.F{},
-		options.WithCollectionSort(map[string]any{"$vector": searchVector}),
-		options.WithCollectionIncludeSimilarity(true),
-		options.WithCollectionLimit(3),
+		options.CollectionFind().
+			SetSort(map[string]any{"$vector": searchVector}).
+			SetIncludeSimilarity(true).
+			SetLimit(3),
 	)
 	defer cursor.Close(ctx)
 
@@ -532,7 +654,7 @@ func CollectionFindWithSort(e *harness.TestEnv) error {
 
 	// Sort by rating ascending, then title descending
 	cursor := c.Find(ctx, filter.Eq("metadata.language", "English"),
-		options.WithCollectionSort(map[string]any{
+		options.CollectionFind().SetSort(map[string]any{
 			"rating": options.SortAscending,
 			"title":  options.SortDescending,
 		}),
@@ -575,7 +697,7 @@ func CollectionFindWithProjection(e *harness.TestEnv) error {
 
 	// Only include title and is_checked_out fields
 	cursor := c.Find(ctx, filter.Eq("metadata.language", "English"),
-		options.WithCollectionProjection(map[string]any{
+		options.CollectionFind().SetProjection(map[string]any{
 			"title":          true,
 			"is_checked_out": true,
 		}),
@@ -625,7 +747,7 @@ func CollectionFindWithLimit(e *harness.TestEnv) error {
 
 	limit := 2
 	cursor := c.Find(ctx, filter.Eq("metadata.language", "English"),
-		options.WithCollectionLimit(limit),
+		options.CollectionFind().SetLimit(limit),
 	)
 	defer cursor.Close(ctx)
 
@@ -652,7 +774,7 @@ func CollectionFindWithSkip(e *harness.TestEnv) error {
 	// Skip requires an explicit sort criterion
 	// First, get all results sorted by rating
 	cursorAll := c.Find(ctx, filter.Eq("metadata.language", "English"),
-		options.WithCollectionSort(map[string]any{
+		options.CollectionFind().SetSort(map[string]any{
 			"rating": options.SortAscending,
 			"title":  options.SortAscending,
 		}),
@@ -670,11 +792,12 @@ func CollectionFindWithSkip(e *harness.TestEnv) error {
 	// Now get results with skip=2
 	skip := 2
 	cursorSkip := c.Find(ctx, filter.Eq("metadata.language", "English"),
-		options.WithCollectionSort(map[string]any{
-			"rating": options.SortAscending,
-			"title":  options.SortAscending,
-		}),
-		options.WithCollectionSkip(skip),
+		options.CollectionFind().
+			SetSort(map[string]any{
+				"rating": options.SortAscending,
+				"title":  options.SortAscending,
+			}).
+			SetSkip(skip),
 	)
 	defer cursorSkip.Close(ctx)
 
@@ -715,15 +838,16 @@ func CollectionFindCombined(e *harness.TestEnv) error {
 			filter.Eq("is_checked_out", false),
 			filter.Lt("number_of_pages", 300),
 		),
-		options.WithCollectionSort(map[string]any{
-			"rating": options.SortAscending,
-			"title":  options.SortDescending,
-		}),
-		options.WithCollectionProjection(map[string]any{
-			"title":          true,
-			"is_checked_out": true,
-		}),
-		options.WithCollectionLimit(3),
+		options.CollectionFind().
+			SetSort(map[string]any{
+				"rating": options.SortAscending,
+				"title":  options.SortDescending,
+			}).
+			SetProjection(map[string]any{
+				"title":          true,
+				"is_checked_out": true,
+			}).
+			SetLimit(3),
 	)
 	defer cursor.Close(ctx)
 
