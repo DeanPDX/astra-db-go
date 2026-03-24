@@ -25,47 +25,12 @@ type CreateTableOptions struct {
 	Keyspace *string `json:"-"`
 }
 
-// List implements Builder[CreateTableOptions].
-func (o *CreateTableOptions) List() []func(*CreateTableOptions) {
-	return NoopBuilder(o)
-}
-
-// Validate implements Validator for CreateTableOptions.
-func (o CreateTableOptions) Validate() error { return nil }
-
-// CreateTableOptionsBuilder is a builder for CreateTableOptions.
-type CreateTableOptionsBuilder struct {
-	Opts []func(*CreateTableOptions)
-}
-
-// CreateTable creates a new CreateTableOptionsBuilder.
-func CreateTable() *CreateTableOptionsBuilder {
-	return &CreateTableOptionsBuilder{}
-}
-
-// List implements Builder[CreateTableOptions].
-func (b *CreateTableOptionsBuilder) List() []func(*CreateTableOptions) {
-	return b.Opts
-}
-
-// SetIfNotExists sets whether the operation should silently succeed if the table already exists.
-func (b *CreateTableOptionsBuilder) SetIfNotExists(v bool) *CreateTableOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateTableOptions) { o.IfNotExists = &v })
-	return b
-}
-
-// SetKeyspace sets the keyspace for the table operation.
-func (b *CreateTableOptionsBuilder) SetKeyspace(v string) *CreateTableOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *CreateTableOptions) { o.Keyspace = &v })
-	return b
-}
-
 // TableFindOptions represents options for finding rows in a table
 type TableFindOptions struct {
 	// Sort specifies how to sort the results. Can be used for:
-	// - Ascending/descending sort on columns (e.g., {"rating": 1, "title": -1})
-	// - Vector search with a vector (e.g., {"vector_column": [0.1, 0.2, 0.3]})
-	// - Vector search with vectorize (e.g., {"vector_column": "search text"})
+	//  - Ascending/descending sort on columns (e.g., {"rating": 1, "title": -1})
+	//  - Vector search with a vector (e.g., {"vector_column": [0.1, 0.2, 0.3]})
+	//  - Vector search with vectorize (e.g., {"vector_column": "search text"})
 	Sort map[string]any `json:"sort,omitempty"`
 
 	// Projection controls which columns are included or excluded in the returned rows
@@ -87,63 +52,9 @@ type TableFindOptions struct {
 	InitialPageState *string `json:"pageState,omitempty"`
 }
 
-// List implements Builder[TableFindOptions] allowing the raw struct to be
-// passed directly to methods that accept ...Builder[TableFindOptions].
-func (o *TableFindOptions) List() []func(*TableFindOptions) {
-	return NoopBuilder(o)
-}
-
-// Validate implements Validator for TableFindOptions.
-func (o TableFindOptions) Validate() error { return nil }
-
-// TableFindOptionsBuilder is a builder for TableFindOptions.
-type TableFindOptionsBuilder struct {
-	Opts []func(*TableFindOptions)
-}
-
-// TableFind creates a new TableFindOptionsBuilder.
-func TableFind() *TableFindOptionsBuilder {
-	return &TableFindOptionsBuilder{}
-}
-
-// List implements Builder[TableFindOptions].
-func (b *TableFindOptionsBuilder) List() []func(*TableFindOptions) {
-	return b.Opts
-}
-
-// SetSort sets the sort option for the find operation.
-func (b *TableFindOptionsBuilder) SetSort(sort map[string]any) *TableFindOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *TableFindOptions) { o.Sort = sort })
-	return b
-}
-
-// SetProjection sets the projection option for the find operation.
-func (b *TableFindOptionsBuilder) SetProjection(projection map[string]bool) *TableFindOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *TableFindOptions) { o.Projection = projection })
-	return b
-}
-
-// SetLimit sets the limit option for the find operation.
-func (b *TableFindOptionsBuilder) SetLimit(limit int) *TableFindOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *TableFindOptions) { o.Limit = &limit })
-	return b
-}
-
-// SetSkip sets the skip option for the find operation.
-func (b *TableFindOptionsBuilder) SetSkip(skip int) *TableFindOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *TableFindOptions) { o.Skip = &skip })
-	return b
-}
-
-// SetIncludeSimilarity sets the includeSimilarity option for vector search.
-func (b *TableFindOptionsBuilder) SetIncludeSimilarity(include bool) *TableFindOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *TableFindOptions) { o.IncludeSimilarity = &include })
-	return b
-}
-
 // SetPageState sets the initial page state for pagination.
-func (b *TableFindOptionsBuilder) SetPageState(pageState string) *TableFindOptionsBuilder {
-	b.Opts = append(b.Opts, func(o *TableFindOptions) { o.InitialPageState = &pageState })
+func (b *tableFindOptionsBuilder) SetPageState(pageState string) *tableFindOptionsBuilder {
+	b.setters = append(b.setters, func(o *TableFindOptions) { o.InitialPageState = &pageState })
 	return b
 }
 
