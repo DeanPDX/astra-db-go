@@ -273,10 +273,10 @@ func (c *Collection) Find(ctx context.Context, f any, opts ...options.Collection
 
 // collectionUpdateOnePayload is the payload for the updateOne command on collections.
 type collectionUpdateOnePayload struct {
-	Filter  any            `json:"filter,omitempty"`
-	Update  any            `json:"update"`
-	Sort    map[string]any `json:"sort,omitempty"`
-	Options map[string]any `json:"options,omitempty"`
+	Filter  any              `json:"filter,omitempty"`
+	Update  CollectionUpdate `json:"update"`
+	Sort    map[string]any   `json:"sort,omitempty"`
+	Options map[string]any   `json:"options,omitempty"`
 }
 
 // collectionUpdateOneResponse is the response from the updateOne command.
@@ -290,10 +290,17 @@ type collectionUpdateOneResponse struct {
 
 // UpdateOne updates a single document matching the filter.
 //
-// The update parameter should be an update expression (e.g., map[string]any{"$set": ...}).
+// The update parameter should be an [update.U] expression, e.g. update.Coll().Set("name", "new").
 //
 // Options passed here override those set on the collection.
-func (c *Collection) UpdateOne(ctx context.Context, f any, update any, opts ...options.CollectionUpdateOneOption) (*results.UpdateResult, error) {
+func (c *Collection) UpdateOne(ctx context.Context, f any, u CollectionUpdate, opts ...options.CollectionUpdateOneOption) (*results.UpdateResult, error) {
+	switch f.(type) {
+	case filter.F, filter.Filter:
+		// Allowed
+	default:
+		return nil, fmt.Errorf("invalid filter type: %T", f)
+	}
+
 	merged, err := options.MergeAndValidate(opts...)
 	if err != nil {
 		return nil, err
@@ -301,7 +308,7 @@ func (c *Collection) UpdateOne(ctx context.Context, f any, update any, opts ...o
 
 	payload := collectionUpdateOnePayload{
 		Filter: f,
-		Update: update,
+		Update: u,
 		Sort:   merged.Sort,
 	}
 
@@ -331,6 +338,136 @@ func (c *Collection) UpdateOne(ctx context.Context, f any, update any, opts ...o
 		UpsertedCount: upsertedCount,
 		UpsertedId:    resp.Status.UpsertedId,
 	}, nil
+}
+
+// collectionUpdateManyPayload is the payload for the updateMany command on collections.
+type collectionUpdateManyPayload struct {
+	Filter  any              `json:"filter,omitempty"`
+	Update  CollectionUpdate `json:"update"`
+	Options map[string]any   `json:"options,omitempty"`
+}
+
+// collectionUpdateManyResponse is the response from the updateMany command.
+type collectionUpdateManyResponse struct {
+	Status struct {
+		MatchedCount  int  `json:"matchedCount"`
+		ModifiedCount int  `json:"modifiedCount"`
+		MoreData      bool `json:"moreData"`
+		UpsertedId    any  `json:"upsertedId"`
+	} `json:"status"`
+}
+
+// UpdateMany updates all documents matching the filter.
+//
+// The update parameter should be an [update.U] expression, e.g. update.Coll().Set("name", "new").
+//
+// The Data API may not update all matching documents in a single round-trip.
+// This method automatically paginates, re-issuing the command and accumulating
+// counts until the server indicates no more data remains.
+//
+// Options passed here override those set on the collection.
+func (c *Collection) UpdateMany(ctx context.Context, f any, u CollectionUpdate, opts ...options.CollectionUpdateManyOption) (*results.UpdateResult, error) {
+	switch f.(type) {
+	case filter.F, filter.Filter:
+		// Allowed
+	default:
+		return nil, fmt.Errorf("invalid filter type: %T", f)
+	}
+
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	payload := collectionUpdateManyPayload{
+		Filter: f,
+		Update: u,
+	}
+
+	if ptr.From(merged.Upsert) {
+		payload.Options = map[string]any{"upsert": true}
+	}
+
+	result := &results.UpdateResult{}
+
+	for {
+		cmd := c.newCmd("updateMany", payload)
+		b, _, err := cmd.Execute(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp collectionUpdateManyResponse
+		if err := json.Unmarshal(b, &resp); err != nil {
+			return nil, err
+		}
+
+		result.MatchedCount += resp.Status.MatchedCount
+		result.ModifiedCount += resp.Status.ModifiedCount
+
+		if resp.Status.UpsertedId != nil && result.UpsertedId == nil {
+			result.UpsertedId = resp.Status.UpsertedId
+			result.UpsertedCount = 1
+		}
+
+		if !resp.Status.MoreData {
+			break
+		}
+	}
+
+	return result, nil
+}
+
+// collectionFindOneAndUpdatePayload is the payload for the findOneAndUpdate command.
+type collectionFindOneAndUpdatePayload struct {
+	Filter     any              `json:"filter,omitempty"`
+	Update     CollectionUpdate `json:"update"`
+	Sort       map[string]any   `json:"sort,omitempty"`
+	Projection map[string]any   `json:"projection,omitempty"`
+	Options    map[string]any   `json:"options,omitempty"`
+}
+
+// FindOneAndUpdate finds a single document matching the filter, applies the update,
+// and returns the document. By default, the document is returned as it was before the
+// update. Use [options.ReturnDocumentAfter] to return the document after the update.
+//
+// The update parameter should be an [update.U] expression, e.g. update.Coll().Set("name", "new").
+//
+// Options passed here override those set on the collection.
+func (c *Collection) FindOneAndUpdate(ctx context.Context, f any, u CollectionUpdate, opts ...options.CollectionFindOneAndUpdateOption) *results.SingleResult {
+	switch f.(type) {
+	case filter.F, filter.Filter:
+		// Allowed
+	default:
+		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %T", f))
+	}
+
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return results.NewSingleResult(nil, nil, err)
+	}
+
+	payload := collectionFindOneAndUpdatePayload{
+		Filter:     f,
+		Update:     u,
+		Sort:       merged.Sort,
+		Projection: merged.Projection,
+	}
+
+	payloadOpts := map[string]any{}
+	if ptr.From(merged.Upsert) {
+		payloadOpts["upsert"] = true
+	}
+	if merged.ReturnDocument != nil {
+		payloadOpts["returnDocument"] = string(*merged.ReturnDocument)
+	}
+	if len(payloadOpts) > 0 {
+		payload.Options = payloadOpts
+	}
+
+	cmd := c.newCmd("findOneAndUpdate", payload)
+	b, warnings, err := cmd.Execute(ctx)
+	return results.NewSingleResult(b, warnings, err)
 }
 
 // CountDocuments counts documents after applying filter f. Count operations are

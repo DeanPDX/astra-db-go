@@ -14,6 +14,7 @@ import (
 	"github.com/datastax/astra-db-go/options"
 	"github.com/datastax/astra-db-go/ptr"
 	"github.com/datastax/astra-db-go/results"
+	"github.com/datastax/astra-db-go/update"
 )
 
 func init() {
@@ -30,6 +31,13 @@ func init() {
 		{Name: "CollectionUpdateOne", Run: CollectionUpdateOne},
 		{Name: "CollectionUpdateOneUpsert", Run: CollectionUpdateOneUpsert},
 		{Name: "CollectionUpdateOneNoMatch", Run: CollectionUpdateOneNoMatch},
+		{Name: "CollectionUpdateMany", Run: CollectionUpdateMany},
+		{Name: "CollectionUpdateManyUpsert", Run: CollectionUpdateManyUpsert},
+		{Name: "CollectionUpdateManyNoMatch", Run: CollectionUpdateManyNoMatch},
+		{Name: "CollectionFindOneAndUpdate", Run: CollectionFindOneAndUpdate},
+		{Name: "CollectionFindOneAndUpdateAfter", Run: CollectionFindOneAndUpdateAfter},
+		{Name: "CollectionFindOneAndUpdateUpsert", Run: CollectionFindOneAndUpdateUpsert},
+		{Name: "CollectionFindOneAndUpdateProjection", Run: CollectionFindOneAndUpdateProjection},
 		{Name: "CollectionDrop", Run: CollectionDrop},
 		// Vector search tests
 		{Name: "CollectionVectorCreate", Run: CollectionVectorCreate},
@@ -322,9 +330,7 @@ func CollectionUpdateOne(e *harness.TestEnv) error {
 	insertedID := resp.Status.InsertedIds[0]
 
 	// Update the document's name
-	result, err := c.UpdateOne(ctx, filter.F{"_id": insertedID}, map[string]any{
-		"$set": map[string]any{"name": "UpdateOneModified"},
-	})
+	result, err := c.UpdateOne(ctx, filter.F{"_id": insertedID}, update.Coll().Set("name", "UpdateOneModified"))
 	if err != nil {
 		return fmt.Errorf("UpdateOne failed: %w", err)
 	}
@@ -366,7 +372,7 @@ func CollectionUpdateOneUpsert(e *harness.TestEnv) error {
 	// Upsert a document that doesn't exist
 	result, err := c.UpdateOne(ctx,
 		filter.F{"_id": upsertID},
-		map[string]any{"$set": map[string]any{"name": "UpsertedDoc"}},
+		update.Coll().Set("name", "UpsertedDoc"),
 		options.CollectionUpdateOne().SetUpsert(true),
 	)
 	if err != nil {
@@ -405,7 +411,7 @@ func CollectionUpdateOneNoMatch(e *harness.TestEnv) error {
 
 	result, err := c.UpdateOne(ctx,
 		filter.F{"_id": "nonexistent-id-xyz"},
-		map[string]any{"$set": map[string]any{"name": "ShouldNotExist"}},
+		update.Coll().Set("name", "ShouldNotExist"),
 	)
 	if err != nil {
 		return fmt.Errorf("UpdateOne no-match failed: %w", err)
@@ -419,6 +425,274 @@ func CollectionUpdateOneNoMatch(e *harness.TestEnv) error {
 	}
 	if result.UpsertedCount != 0 {
 		return fmt.Errorf("expected UpsertedCount 0, got %d", result.UpsertedCount)
+	}
+
+	return nil
+}
+
+func CollectionUpdateMany(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert several documents with a shared tag for targeting
+	tag := fmt.Sprintf("update-many-%d", time.Now().UnixNano())
+	for i := 0; i < 5; i++ {
+		_, err := c.InsertOne(ctx, map[string]any{
+			"tag":   tag,
+			"index": i,
+			"name":  fmt.Sprintf("doc-%d", i),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert doc %d: %w", i, err)
+		}
+	}
+
+	// UpdateMany: set a new field on all docs with our tag
+	result, err := c.UpdateMany(ctx,
+		filter.F{"tag": tag},
+		update.Coll().Set("updated", true),
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateMany failed: %w", err)
+	}
+
+	if result.MatchedCount != 5 {
+		return fmt.Errorf("expected MatchedCount 5, got %d", result.MatchedCount)
+	}
+	if result.ModifiedCount != 5 {
+		return fmt.Errorf("expected ModifiedCount 5, got %d", result.ModifiedCount)
+	}
+	if result.UpsertedCount != 0 {
+		return fmt.Errorf("expected UpsertedCount 0, got %d", result.UpsertedCount)
+	}
+
+	// Verify the update by reading back
+	cur := c.Find(ctx, filter.F{"tag": tag})
+	defer cur.Close(ctx)
+	var docs []map[string]any
+	if err := cur.All(ctx, &docs); err != nil {
+		return fmt.Errorf("Find after UpdateMany failed: %w", err)
+	}
+	for i, doc := range docs {
+		if doc["updated"] != true {
+			return fmt.Errorf("doc %d not updated", i)
+		}
+	}
+
+	return nil
+}
+
+func CollectionUpdateManyUpsert(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	upsertTag := fmt.Sprintf("upsert-many-%d", time.Now().UnixNano())
+
+	result, err := c.UpdateMany(ctx,
+		filter.F{"tag": upsertTag},
+		update.Coll().Set("name", "UpsertedMany"),
+		options.CollectionUpdateMany().SetUpsert(true),
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateMany upsert failed: %w", err)
+	}
+
+	if result.MatchedCount != 0 {
+		return fmt.Errorf("expected MatchedCount 0, got %d", result.MatchedCount)
+	}
+	if result.UpsertedCount != 1 {
+		return fmt.Errorf("expected UpsertedCount 1, got %d", result.UpsertedCount)
+	}
+	if result.UpsertedId == nil {
+		return errors.New("expected UpsertedId to be non-nil")
+	}
+
+	// Verify the upserted document exists
+	var doc map[string]any
+	if err := c.FindOne(ctx, filter.F{"tag": upsertTag}).Decode(&doc); err != nil {
+		return fmt.Errorf("FindOne after upsert failed: %w", err)
+	}
+	if doc["name"] != "UpsertedMany" {
+		return fmt.Errorf("expected name 'UpsertedMany', got '%s'", doc["name"])
+	}
+
+	return nil
+}
+
+func CollectionUpdateManyNoMatch(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	result, err := c.UpdateMany(ctx,
+		filter.F{"_id": "nonexistent-update-many-xyz"},
+		update.Coll().Set("name", "ShouldNotExist"),
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateMany no-match failed: %w", err)
+	}
+
+	if result.MatchedCount != 0 {
+		return fmt.Errorf("expected MatchedCount 0, got %d", result.MatchedCount)
+	}
+	if result.ModifiedCount != 0 {
+		return fmt.Errorf("expected ModifiedCount 0, got %d", result.ModifiedCount)
+	}
+	if result.UpsertedCount != 0 {
+		return fmt.Errorf("expected UpsertedCount 0, got %d", result.UpsertedCount)
+	}
+
+	return nil
+}
+
+func CollectionFindOneAndUpdate(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document to update
+	original := SimpleObject{Name: "FindOneAndUpdateOriginal"}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	insertedID := resp.Status.InsertedIds[0]
+
+	// FindOneAndUpdate — default returnDocument is "before"
+	var doc SimpleObject
+	err = c.FindOneAndUpdate(ctx,
+		filter.F{"_id": insertedID},
+		update.Coll().Set("name", "FindOneAndUpdateModified"),
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndUpdate failed: %w", err)
+	}
+
+	// Should return the document BEFORE the update
+	if doc.Name != "FindOneAndUpdateOriginal" {
+		return fmt.Errorf("expected name 'FindOneAndUpdateOriginal' (before update), got '%s'", doc.Name)
+	}
+
+	// Verify the DB has the updated value
+	var dbDoc SimpleObject
+	if err := c.FindOne(ctx, filter.F{"_id": insertedID}).Decode(&dbDoc); err != nil {
+		return fmt.Errorf("FindOne after FindOneAndUpdate failed: %w", err)
+	}
+	if dbDoc.Name != "FindOneAndUpdateModified" {
+		return fmt.Errorf("expected DB name 'FindOneAndUpdateModified', got '%s'", dbDoc.Name)
+	}
+
+	return nil
+}
+
+func CollectionFindOneAndUpdateAfter(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document
+	original := SimpleObject{Name: "BeforeAfterTest"}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	insertedID := resp.Status.InsertedIds[0]
+
+	// FindOneAndUpdate with ReturnDocumentAfter
+	var doc SimpleObject
+	err = c.FindOneAndUpdate(ctx,
+		filter.F{"_id": insertedID},
+		update.Coll().Set("name", "AfterValue"),
+		options.CollectionFindOneAndUpdate().SetReturnDocument(options.ReturnDocumentAfter),
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndUpdate with returnDocument=after failed: %w", err)
+	}
+
+	// Should return the document AFTER the update
+	if doc.Name != "AfterValue" {
+		return fmt.Errorf("expected name 'AfterValue' (after update), got '%s'", doc.Name)
+	}
+
+	return nil
+}
+
+func CollectionFindOneAndUpdateUpsert(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	upsertID := fmt.Sprintf("find-and-update-upsert-%d", time.Now().Unix())
+
+	// FindOneAndUpdate with upsert on a non-existent document, return after
+	var doc map[string]any
+	err := c.FindOneAndUpdate(ctx,
+		filter.F{"_id": upsertID},
+		update.Coll().Set("name", "UpsertedViaFindOneAndUpdate"),
+		options.CollectionFindOneAndUpdate().
+			SetUpsert(true).
+			SetReturnDocument(options.ReturnDocumentAfter),
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndUpdate upsert failed: %w", err)
+	}
+
+	if doc["name"] != "UpsertedViaFindOneAndUpdate" {
+		return fmt.Errorf("expected name 'UpsertedViaFindOneAndUpdate', got '%v'", doc["name"])
+	}
+
+	// Verify document exists in DB
+	var dbDoc map[string]any
+	if err := c.FindOne(ctx, filter.F{"_id": upsertID}).Decode(&dbDoc); err != nil {
+		return fmt.Errorf("FindOne after upsert failed: %w", err)
+	}
+	if dbDoc["name"] != "UpsertedViaFindOneAndUpdate" {
+		return fmt.Errorf("expected DB name 'UpsertedViaFindOneAndUpdate', got '%v'", dbDoc["name"])
+	}
+
+	return nil
+}
+
+func CollectionFindOneAndUpdateProjection(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document with multiple fields
+	original := SimpleObject{Name: "ProjectionTest", Properties: Properties{
+		PropertyOne: "val1",
+		IntProperty: 42,
+	}}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	insertedID := resp.Status.InsertedIds[0]
+
+	// FindOneAndUpdate with projection — only include "name"
+	var doc map[string]any
+	err = c.FindOneAndUpdate(ctx,
+		filter.F{"_id": insertedID},
+		update.Coll().Set("name", "ProjectionTestUpdated"),
+		options.CollectionFindOneAndUpdate().
+			SetReturnDocument(options.ReturnDocumentAfter).
+			SetProjection(map[string]any{"name": true}),
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndUpdate with projection failed: %w", err)
+	}
+
+	// Should have _id and name, but NOT properties
+	if _, ok := doc["_id"]; !ok {
+		return errors.New("expected _id in projected result")
+	}
+	if doc["name"] != "ProjectionTestUpdated" {
+		return fmt.Errorf("expected name 'ProjectionTestUpdated', got '%v'", doc["name"])
+	}
+	if _, ok := doc["properties"]; ok {
+		return errors.New("expected properties to be excluded by projection")
 	}
 
 	return nil

@@ -160,6 +160,71 @@ func (b *collectionDefaultIdOptionsBuilder) SetType(v DefaultIdType) *collection
 	return b
 }
 
+// CollectionFindOneAndUpdateOption configures a CollectionFindOneAndUpdate operation.
+// You can use the fluent-style builder or a pointer to [CollectionFindOneAndUpdateOptions] interchangeably.
+//
+// Example using the fluent builder ([CollectionFindOneAndUpdate]):
+//
+//	// No need to use pointer for builder; the builder handles that for you.
+//	opts := options.CollectionFindOneAndUpdate().SetUpsert(false)
+//
+// Example using a pointer to [CollectionFindOneAndUpdateOptions] without the fluent builder:
+//
+//	opts := &options.CollectionFindOneAndUpdateOptions{Upsert: ptr.To(false)}
+type CollectionFindOneAndUpdateOption = Builder[CollectionFindOneAndUpdateOptions]
+
+// Setters implements Builder[CollectionFindOneAndUpdateOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CollectionFindOneAndUpdateOptions].
+func (o *CollectionFindOneAndUpdateOptions) Setters() []func(*CollectionFindOneAndUpdateOptions) {
+	return NoopBuilder(o)
+}
+
+// Validate implements Validator for CollectionFindOneAndUpdateOptions.
+func (o *CollectionFindOneAndUpdateOptions) Validate() error { return nil }
+
+// collectionFindOneAndUpdateOptionsBuilder is a builder for CollectionFindOneAndUpdateOptions.
+type collectionFindOneAndUpdateOptionsBuilder struct {
+	setters []func(*CollectionFindOneAndUpdateOptions)
+}
+
+// CollectionFindOneAndUpdate creates a new builder for [CollectionFindOneAndUpdateOptions].
+func CollectionFindOneAndUpdate() *collectionFindOneAndUpdateOptionsBuilder {
+	return &collectionFindOneAndUpdateOptionsBuilder{}
+}
+
+// Setters implements Builder[CollectionFindOneAndUpdateOptions].
+func (b *collectionFindOneAndUpdateOptionsBuilder) Setters() []func(*CollectionFindOneAndUpdateOptions) {
+	return b.setters
+}
+
+// SetSort sets the Sort option.
+// Sort specifies the sort order to apply before selecting the document to update.
+func (b *collectionFindOneAndUpdateOptionsBuilder) SetSort(v map[string]any) *collectionFindOneAndUpdateOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndUpdateOptions) { o.Sort = v })
+	return b
+}
+
+// SetProjection sets the Projection option.
+// Projection controls which fields are included or excluded in the returned document.
+func (b *collectionFindOneAndUpdateOptionsBuilder) SetProjection(v map[string]any) *collectionFindOneAndUpdateOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndUpdateOptions) { o.Projection = v })
+	return b
+}
+
+// SetUpsert sets the Upsert option.
+// Upsert if true, inserts a new document if no document matches the filter.
+func (b *collectionFindOneAndUpdateOptionsBuilder) SetUpsert(v bool) *collectionFindOneAndUpdateOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndUpdateOptions) { o.Upsert = &v })
+	return b
+}
+
+// SetReturnDocument sets the ReturnDocument option.
+// ReturnDocument specifies whether to return the document before or after the update.
+func (b *collectionFindOneAndUpdateOptionsBuilder) SetReturnDocument(v ReturnDocument) *collectionFindOneAndUpdateOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndUpdateOptions) { o.ReturnDocument = &v })
+	return b
+}
+
 // CollectionFindOption configures a CollectionFind operation.
 // You can use the fluent-style builder or a pointer to [CollectionFindOptions] interchangeably.
 //
@@ -250,6 +315,50 @@ func (b *collectionFindOptionsBuilder) SetIncludeSortVector(v bool) *collectionF
 // InitialPageState is used for pagination to fetch the next page of results
 func (b *collectionFindOptionsBuilder) SetInitialPageState(v string) *collectionFindOptionsBuilder {
 	b.setters = append(b.setters, func(o *CollectionFindOptions) { o.InitialPageState = &v })
+	return b
+}
+
+// CollectionUpdateManyOption configures a CollectionUpdateMany operation.
+// You can use the fluent-style builder or a pointer to [CollectionUpdateManyOptions] interchangeably.
+//
+// Example using the fluent builder ([CollectionUpdateMany]):
+//
+//	// No need to use pointer for builder; the builder handles that for you.
+//	opts := options.CollectionUpdateMany().SetUpsert(false)
+//
+// Example using a pointer to [CollectionUpdateManyOptions] without the fluent builder:
+//
+//	opts := &options.CollectionUpdateManyOptions{Upsert: ptr.To(false)}
+type CollectionUpdateManyOption = Builder[CollectionUpdateManyOptions]
+
+// Setters implements Builder[CollectionUpdateManyOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CollectionUpdateManyOptions].
+func (o *CollectionUpdateManyOptions) Setters() []func(*CollectionUpdateManyOptions) {
+	return NoopBuilder(o)
+}
+
+// Validate implements Validator for CollectionUpdateManyOptions.
+func (o *CollectionUpdateManyOptions) Validate() error { return nil }
+
+// collectionUpdateManyOptionsBuilder is a builder for CollectionUpdateManyOptions.
+type collectionUpdateManyOptionsBuilder struct {
+	setters []func(*CollectionUpdateManyOptions)
+}
+
+// CollectionUpdateMany creates a new builder for [CollectionUpdateManyOptions].
+func CollectionUpdateMany() *collectionUpdateManyOptionsBuilder {
+	return &collectionUpdateManyOptionsBuilder{}
+}
+
+// Setters implements Builder[CollectionUpdateManyOptions].
+func (b *collectionUpdateManyOptionsBuilder) Setters() []func(*CollectionUpdateManyOptions) {
+	return b.setters
+}
+
+// SetUpsert sets the Upsert option.
+// Upsert if true, inserts a new document if no document matches the filter.
+func (b *collectionUpdateManyOptionsBuilder) SetUpsert(v bool) *collectionUpdateManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionUpdateManyOptions) { o.Upsert = &v })
 	return b
 }
 

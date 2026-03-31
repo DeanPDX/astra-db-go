@@ -26,6 +26,7 @@ import (
 
 	"github.com/datastax/astra-db-go/options"
 	"github.com/datastax/astra-db-go/results"
+	"github.com/datastax/astra-db-go/update"
 )
 
 // command represents a command to be executed against the astra DB.
@@ -257,3 +258,15 @@ func (c *command) ExtractErrors(statusCode int, body []byte, opts *options.APIOp
 
 	return body, resp.Status.Warnings, nil
 }
+
+// CollectionUpdate is implemented by [update.CollectionUpdateBuilder] and [update.U].
+// See the [update package] for more details.
+//
+// [update package]: https://pkg.go.dev/github.com/datastax/astra-db-go/update
+type CollectionUpdate = update.CollectionUpdate
+
+// TableUpdate is implemented by [update.TableUpdateBuilder] and [update.U].
+// See the [update package] for more details.
+//
+// [update package]: https://pkg.go.dev/github.com/datastax/astra-db-go/update
+type TableUpdate = update.TableUpdate
