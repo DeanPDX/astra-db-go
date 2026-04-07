@@ -1,3 +1,17 @@
+// Copyright DataStax, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package tests
 
 import (
@@ -14,6 +28,7 @@ import (
 	"github.com/datastax/astra-db-go/options"
 	"github.com/datastax/astra-db-go/ptr"
 	"github.com/datastax/astra-db-go/results"
+	"github.com/datastax/astra-db-go/sort"
 	"github.com/datastax/astra-db-go/update"
 )
 
@@ -38,6 +53,7 @@ func init() {
 		{Name: "CollectionFindOneAndUpdateAfter", Run: CollectionFindOneAndUpdateAfter},
 		{Name: "CollectionFindOneAndUpdateUpsert", Run: CollectionFindOneAndUpdateUpsert},
 		{Name: "CollectionFindOneAndUpdateProjection", Run: CollectionFindOneAndUpdateProjection},
+		{Name: "CollectionDeleteOne", Run: CollectionDeleteOne},
 		{Name: "CollectionDrop", Run: CollectionDrop},
 		// Vector search tests
 		{Name: "CollectionVectorCreate", Run: CollectionVectorCreate},
@@ -698,6 +714,30 @@ func CollectionFindOneAndUpdateProjection(e *harness.TestEnv) error {
 	return nil
 }
 
+func CollectionDeleteOne(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document to delete
+	original := SimpleObject{Name: "DeleteOneTest"}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	insertedID := resp.Status.InsertedIds[0]
+
+	// Delete the document
+	result, err := c.DeleteOne(ctx, filter.F{"_id": insertedID})
+	if err != nil {
+		return fmt.Errorf("DeleteOne failed: %w", err)
+	}
+	if result.DeletedCount != 1 {
+		return fmt.Errorf("expected DeletedCount 1, got %d", result.DeletedCount)
+	}
+	return nil
+}
+
 func CollectionDrop(e *harness.TestEnv) error {
 	ctx := context.Background()
 	db := e.DefaultDb()
@@ -832,7 +872,7 @@ func CollectionVectorSearch(e *harness.TestEnv) error {
 
 	cursor := c.Find(ctx, filter.F{},
 		options.CollectionFind().
-			SetSort(map[string]any{"$vector": searchVector}).
+			SetSort(sort.Vector(searchVector)).
 			SetLimit(3),
 	)
 	defer cursor.Close(ctx)
@@ -871,7 +911,7 @@ func CollectionVectorSearchWithSimilarity(e *harness.TestEnv) error {
 
 	cursor := c.Find(ctx, filter.F{},
 		options.CollectionFind().
-			SetSort(map[string]any{"$vector": searchVector}).
+			SetSort(sort.Vector(searchVector)).
 			SetIncludeSimilarity(true).
 			SetLimit(3),
 	)
@@ -928,10 +968,7 @@ func CollectionFindWithSort(e *harness.TestEnv) error {
 
 	// Sort by rating ascending, then title descending
 	cursor := c.Find(ctx, filter.Eq("metadata.language", "English"),
-		options.CollectionFind().SetSort(map[string]any{
-			"rating": options.SortAscending,
-			"title":  options.SortDescending,
-		}),
+		options.CollectionFind().SetSort(sort.Asc("rating").Desc("title")),
 	)
 	defer cursor.Close(ctx)
 
@@ -1048,10 +1085,7 @@ func CollectionFindWithSkip(e *harness.TestEnv) error {
 	// Skip requires an explicit sort criterion
 	// First, get all results sorted by rating
 	cursorAll := c.Find(ctx, filter.Eq("metadata.language", "English"),
-		options.CollectionFind().SetSort(map[string]any{
-			"rating": options.SortAscending,
-			"title":  options.SortAscending,
-		}),
+		options.CollectionFind().SetSort(sort.Asc("rating").Asc("title")),
 	)
 	var allResults []VectorDocument
 	if err := cursorAll.All(ctx, &allResults); err != nil {
@@ -1067,10 +1101,7 @@ func CollectionFindWithSkip(e *harness.TestEnv) error {
 	skip := 2
 	cursorSkip := c.Find(ctx, filter.Eq("metadata.language", "English"),
 		options.CollectionFind().
-			SetSort(map[string]any{
-				"rating": options.SortAscending,
-				"title":  options.SortAscending,
-			}).
+			SetSort(sort.Asc("rating").Asc("title")).
 			SetSkip(skip),
 	)
 	defer cursorSkip.Close(ctx)
@@ -1113,10 +1144,7 @@ func CollectionFindCombined(e *harness.TestEnv) error {
 			filter.Lt("number_of_pages", 300),
 		),
 		options.CollectionFind().
-			SetSort(map[string]any{
-				"rating": options.SortAscending,
-				"title":  options.SortDescending,
-			}).
+			SetSort(sort.Asc("rating").Desc("title")).
 			SetProjection(map[string]any{
 				"title":          true,
 				"is_checked_out": true,

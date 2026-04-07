@@ -24,7 +24,22 @@ import (
 	"github.com/datastax/astra-db-go/options"
 	"github.com/datastax/astra-db-go/ptr"
 	"github.com/datastax/astra-db-go/results"
+	"github.com/datastax/astra-db-go/sort"
 )
+
+// CollectionFilter is implemented by [filter.F] and [filter.Filter].
+// See the [filter package] for more details.
+//
+// Example composing Filters:
+//
+//	f := filter.Gt("num_pages", 300)
+//
+// Example using filter.F:
+//
+//	f := filter.F{"num_pages": filter.F{"$gt": 300}}
+//
+// [filter package]: https://pkg.go.dev/github.com/datastax/astra-db-go/filter
+type CollectionFilter = filter.Filterable
 
 // Collection represents a collection in an Astra DB database.
 //
@@ -41,8 +56,8 @@ func (c *Collection) Name() string {
 	return c.name
 }
 
-// Options returns the collection's options (or empty options if nil).
-func (c *Collection) Options() *options.APIOptions {
+// ClientOptions returns the collection's options (or empty options if nil).
+func (c *Collection) ClientOptions() *options.APIOptions {
 	if c.options == nil {
 		return &options.APIOptions{}
 	}
@@ -117,16 +132,14 @@ func (c *Collection) InsertMany(ctx context.Context, documents any, opts ...opti
 	return resp, err
 }
 
+type filterWrapper struct {
+	Filters CollectionFilter `json:"filter"`
+}
+
 // FindOne finds a single document matching the filter.
 //
 // Options passed here override those set on the collection.
-func (c *Collection) FindOne(ctx context.Context, f any, opts ...options.APIOption) *results.SingleResult {
-	switch f.(type) {
-	case filter.F, filter.Filter:
-		// Allowed
-	default:
-		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %T", f))
-	}
+func (c *Collection) FindOne(ctx context.Context, f CollectionFilter, opts ...options.APIOption) *results.SingleResult {
 	cmd := c.newCmd("findOne", filterWrapper{Filters: f}, opts...)
 	b, warnings, err := cmd.Execute(ctx)
 	return results.NewSingleResult(b, warnings, err)
@@ -134,8 +147,8 @@ func (c *Collection) FindOne(ctx context.Context, f any, opts ...options.APIOpti
 
 // collectionFindPayload is the payload for the find command on collections
 type collectionFindPayload struct {
-	Filter     any                    `json:"filter,omitempty"`
-	Sort       map[string]any         `json:"sort,omitempty"`
+	Filter     CollectionFilter       `json:"filter,omitempty"`
+	Sort       sort.Sortable          `json:"sort,omitempty"`
 	Projection map[string]any         `json:"projection,omitempty"`
 	Options    *collectionFindOptions `json:"options,omitempty"`
 }
@@ -198,15 +211,7 @@ type collectionFindResponse struct {
 //	        SetSort(map[string]any{"$vector": []float32{0.1, 0.2, 0.3}}).
 //	        SetIncludeSimilarity(true),
 //	)
-func (c *Collection) Find(ctx context.Context, f any, opts ...options.CollectionFindOption) *cursor.Cursor {
-	// Validate filter type
-	switch f.(type) {
-	case filter.F, filter.Filter:
-		// Allowed
-	default:
-		return cursor.NewWithError(fmt.Errorf("invalid filter type: %T", f))
-	}
-
+func (c *Collection) Find(ctx context.Context, f CollectionFilter, opts ...options.CollectionFindOption) *cursor.Cursor {
 	// Build the find options once (they don't change between pages)
 	findOpts, err := options.MergeAndValidate(opts...)
 	if err != nil {
@@ -273,9 +278,9 @@ func (c *Collection) Find(ctx context.Context, f any, opts ...options.Collection
 
 // collectionUpdateOnePayload is the payload for the updateOne command on collections.
 type collectionUpdateOnePayload struct {
-	Filter  any              `json:"filter,omitempty"`
+	Filter  CollectionFilter `json:"filter,omitempty"`
 	Update  CollectionUpdate `json:"update"`
-	Sort    map[string]any   `json:"sort,omitempty"`
+	Sort    sort.Sortable    `json:"sort,omitempty"`
 	Options map[string]any   `json:"options,omitempty"`
 }
 
@@ -293,14 +298,7 @@ type collectionUpdateOneResponse struct {
 // The update parameter should be an [update.U] expression, e.g. update.Coll().Set("name", "new").
 //
 // Options passed here override those set on the collection.
-func (c *Collection) UpdateOne(ctx context.Context, f any, u CollectionUpdate, opts ...options.CollectionUpdateOneOption) (*results.UpdateResult, error) {
-	switch f.(type) {
-	case filter.F, filter.Filter:
-		// Allowed
-	default:
-		return nil, fmt.Errorf("invalid filter type: %T", f)
-	}
-
+func (c *Collection) UpdateOne(ctx context.Context, f CollectionFilter, u CollectionUpdate, opts ...options.CollectionUpdateOneOption) (*results.UpdateResult, error) {
 	merged, err := options.MergeAndValidate(opts...)
 	if err != nil {
 		return nil, err
@@ -342,7 +340,7 @@ func (c *Collection) UpdateOne(ctx context.Context, f any, u CollectionUpdate, o
 
 // collectionUpdateManyPayload is the payload for the updateMany command on collections.
 type collectionUpdateManyPayload struct {
-	Filter  any              `json:"filter,omitempty"`
+	Filter  CollectionFilter `json:"filter,omitempty"`
 	Update  CollectionUpdate `json:"update"`
 	Options map[string]any   `json:"options,omitempty"`
 }
@@ -366,14 +364,7 @@ type collectionUpdateManyResponse struct {
 // counts until the server indicates no more data remains.
 //
 // Options passed here override those set on the collection.
-func (c *Collection) UpdateMany(ctx context.Context, f any, u CollectionUpdate, opts ...options.CollectionUpdateManyOption) (*results.UpdateResult, error) {
-	switch f.(type) {
-	case filter.F, filter.Filter:
-		// Allowed
-	default:
-		return nil, fmt.Errorf("invalid filter type: %T", f)
-	}
-
+func (c *Collection) UpdateMany(ctx context.Context, f CollectionFilter, u CollectionUpdate, opts ...options.CollectionUpdateManyOption) (*results.UpdateResult, error) {
 	merged, err := options.MergeAndValidate(opts...)
 	if err != nil {
 		return nil, err
@@ -420,9 +411,9 @@ func (c *Collection) UpdateMany(ctx context.Context, f any, u CollectionUpdate, 
 
 // collectionFindOneAndUpdatePayload is the payload for the findOneAndUpdate command.
 type collectionFindOneAndUpdatePayload struct {
-	Filter     any              `json:"filter,omitempty"`
+	Filter     CollectionFilter `json:"filter,omitempty"`
 	Update     CollectionUpdate `json:"update"`
-	Sort       map[string]any   `json:"sort,omitempty"`
+	Sort       sort.Sortable    `json:"sort,omitempty"`
 	Projection map[string]any   `json:"projection,omitempty"`
 	Options    map[string]any   `json:"options,omitempty"`
 }
@@ -434,14 +425,7 @@ type collectionFindOneAndUpdatePayload struct {
 // The update parameter should be an [update.U] expression, e.g. update.Coll().Set("name", "new").
 //
 // Options passed here override those set on the collection.
-func (c *Collection) FindOneAndUpdate(ctx context.Context, f any, u CollectionUpdate, opts ...options.CollectionFindOneAndUpdateOption) *results.SingleResult {
-	switch f.(type) {
-	case filter.F, filter.Filter:
-		// Allowed
-	default:
-		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %T", f))
-	}
-
+func (c *Collection) FindOneAndUpdate(ctx context.Context, f CollectionFilter, u CollectionUpdate, opts ...options.CollectionFindOneAndUpdateOption) *results.SingleResult {
 	merged, err := options.MergeAndValidate(opts...)
 	if err != nil {
 		return results.NewSingleResult(nil, nil, err)
@@ -470,12 +454,58 @@ func (c *Collection) FindOneAndUpdate(ctx context.Context, f any, u CollectionUp
 	return results.NewSingleResult(b, warnings, err)
 }
 
+// collectionDeleteOnePayload is the payload for the deleteOne command on collections.
+type collectionDeleteOnePayload struct {
+	Filter CollectionFilter `json:"filter,omitempty"`
+	Sort   sort.Sortable    `json:"sort,omitempty"`
+}
+
+// collectionDeleteOneResponse is the response from the deleteOne command.
+type collectionDeleteOneResponse struct {
+	Status struct {
+		DeletedCount int `json:"deletedCount"`
+	} `json:"status"`
+}
+
+// DeleteOne deletes a single document matching the filter.
+//
+// When the filter matches multiple documents, use the Sort option to control
+// which document is deleted.
+//
+// Options passed here override those set on the collection.
+func (c *Collection) DeleteOne(ctx context.Context, f CollectionFilter, opts ...options.CollectionDeleteOneOption) (*results.DeleteResult, error) {
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	payload := collectionDeleteOnePayload{
+		Filter: f,
+		Sort:   merged.Sort,
+	}
+
+	cmd := c.newCmd("deleteOne", payload)
+	b, _, err := cmd.Execute(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp collectionDeleteOneResponse
+	if err := json.Unmarshal(b, &resp); err != nil {
+		return nil, err
+	}
+
+	return &results.DeleteResult{
+		DeletedCount: resp.Status.DeletedCount,
+	}, nil
+}
+
 // CountDocuments counts documents after applying filter f. Count operations are
 // expensive: for this reason, the best practice is to provide a reasonable upperBound.
 // Use "0" for "all" (not recommended unless you have appropriate filters).
 //
 // Options passed here override those set on the collection.
-func (c *Collection) CountDocuments(ctx context.Context, f any, upperBound int, opts ...options.APIOption) (int, error) {
+func (c *Collection) CountDocuments(ctx context.Context, f CollectionFilter, upperBound int, opts ...options.APIOption) (int, error) {
 	cmd := c.newCmd("countDocuments", filterWrapper{Filters: f}, opts...)
 	b, warnings, err := cmd.Execute(ctx)
 	return results.NewCountResult(b, warnings, err).Count(upperBound)
