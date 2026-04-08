@@ -1,4 +1,4 @@
-// Copyright DataStax, Inc.
+// Copyright IBM Corp.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,9 @@ package astradb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/datastax/astra-db-go/cursor"
 	"github.com/datastax/astra-db-go/filter"
@@ -71,6 +73,30 @@ func (c *Collection) Database() *Db {
 
 func (c *Collection) newCmd(name string, payload any, opts ...options.APIOption) command {
 	return newCmdWithOptions(c.db, c.name, name, payload, c.options, opts...)
+}
+
+// newCmdOverride creates a command with a pre-built *APIOptions override,
+// used by builder-pattern methods where API options flow through the struct.
+func (c *Collection) newCmdOverride(name string, payload any, override *options.APIOptions) command {
+	return command{
+		db:              c.db,
+		name:            name,
+		resourceName:    c.name,
+		payload:         payload,
+		resourceOptions: c.options,
+		commandOptions:  override,
+	}
+}
+
+// resolveGeneralMethodTimeout returns the effective timeout for a paginated
+// operation. The per-method timeout takes priority over the hierarchy timeout.
+func (c *Collection) resolveGeneralMethodTimeout(methodTimeout *time.Duration, override *options.APIOptions) *time.Duration {
+	if methodTimeout != nil {
+		return methodTimeout
+	}
+	cmd := c.newCmdOverride("", nil, override)
+	opts := cmd.resolveOptions()
+	return opts.GetGeneralMethodTimeout()
 }
 
 // insertManyPayload is the payload for insertMany commands.
@@ -133,14 +159,18 @@ func (c *Collection) InsertMany(ctx context.Context, documents any, opts ...opti
 }
 
 type filterWrapper struct {
-	Filters CollectionFilter `json:"filter"`
+	Filters CollectionFilter `json:"filter,omitempty"`
 }
 
 // FindOne finds a single document matching the filter.
 //
 // Options passed here override those set on the collection.
-func (c *Collection) FindOne(ctx context.Context, f CollectionFilter, opts ...options.APIOption) *results.SingleResult {
-	cmd := c.newCmd("findOne", filterWrapper{Filters: f}, opts...)
+func (c *Collection) FindOne(ctx context.Context, f CollectionFilter, opts ...options.CollectionFindOneOption) *results.SingleResult {
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return results.NewSingleResult([]byte{}, nil, err)
+	}
+	cmd := c.newCmdOverride("findOne", filterWrapper{Filters: f}, merged.APIOptions)
 	b, warnings, err := cmd.Execute(ctx)
 	return results.NewSingleResult(b, warnings, err)
 }
@@ -259,7 +289,7 @@ func (c *Collection) Find(ctx context.Context, f CollectionFilter, opts ...optio
 			payload.Options = payloadOpts
 		}
 
-		cmd := c.newCmd("find", payload)
+		cmd := c.newCmdOverride("find", payload, findOpts.APIOptions)
 		b, warnings, err := cmd.Execute(fetchCtx)
 		if err != nil {
 			return nil, nil, warnings, err
@@ -314,7 +344,7 @@ func (c *Collection) UpdateOne(ctx context.Context, f CollectionFilter, u Collec
 		payload.Options = map[string]any{"upsert": true}
 	}
 
-	cmd := c.newCmd("updateOne", payload)
+	cmd := c.newCmdOverride("updateOne", payload, merged.APIOptions)
 	b, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return nil, err
@@ -370,6 +400,12 @@ func (c *Collection) UpdateMany(ctx context.Context, f CollectionFilter, u Colle
 		return nil, err
 	}
 
+	if timeout := c.resolveGeneralMethodTimeout(merged.Timeout, merged.APIOptions); timeout != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *timeout)
+		defer cancel()
+	}
+
 	payload := collectionUpdateManyPayload{
 		Filter: f,
 		Update: u,
@@ -382,7 +418,7 @@ func (c *Collection) UpdateMany(ctx context.Context, f CollectionFilter, u Colle
 	result := &results.UpdateResult{}
 
 	for {
-		cmd := c.newCmd("updateMany", payload)
+		cmd := c.newCmdOverride("updateMany", payload, merged.APIOptions)
 		b, _, err := cmd.Execute(ctx)
 		if err != nil {
 			return nil, err
@@ -449,7 +485,7 @@ func (c *Collection) FindOneAndUpdate(ctx context.Context, f CollectionFilter, u
 		payload.Options = payloadOpts
 	}
 
-	cmd := c.newCmd("findOneAndUpdate", payload)
+	cmd := c.newCmdOverride("findOneAndUpdate", payload, merged.APIOptions)
 	b, warnings, err := cmd.Execute(ctx)
 	return results.NewSingleResult(b, warnings, err)
 }
@@ -484,7 +520,7 @@ func (c *Collection) DeleteOne(ctx context.Context, f CollectionFilter, opts ...
 		Sort:   merged.Sort,
 	}
 
-	cmd := c.newCmd("deleteOne", payload)
+	cmd := c.newCmdOverride("deleteOne", payload, merged.APIOptions)
 	b, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return nil, err
@@ -498,6 +534,75 @@ func (c *Collection) DeleteOne(ctx context.Context, f CollectionFilter, opts ...
 	return &results.DeleteResult{
 		DeletedCount: resp.Status.DeletedCount,
 	}, nil
+}
+
+// collectionDeleteManyPayload is the payload for the deleteMany command on collections.
+type collectionDeleteManyPayload struct {
+	Filter CollectionFilter `json:"filter,omitempty"`
+}
+
+// collectionDeleteManyResponse is the response from the deleteMany command.
+type collectionDeleteManyResponse struct {
+	Status struct {
+		DeletedCount int  `json:"deletedCount"`
+		MoreData     bool `json:"moreData"`
+	} `json:"status"`
+}
+
+var ErrNilFilter = errors.New("filter cannot be nil. If you want to delete all documents, use an empty filter instead")
+
+// DeleteMany deletes all documents matching the filter.
+//
+// The Data API may not delete all matching documents in a single round-trip.
+// This method automatically paginates, re-issuing the command and accumulating
+// counts until the server indicates no more data remains.
+//
+// An empty or nil filter deletes all documents in the collection. In that case,
+// the returned DeletedCount is -1.
+//
+// Options passed here override those set on the collection.
+func (c *Collection) DeleteMany(ctx context.Context, f CollectionFilter, opts ...options.CollectionDeleteManyOption) (*results.DeleteResult, error) {
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	if f == nil {
+		return nil, ErrNilFilter
+	}
+
+	if timeout := c.resolveGeneralMethodTimeout(merged.Timeout, merged.APIOptions); timeout != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *timeout)
+		defer cancel()
+	}
+
+	payload := collectionDeleteManyPayload{
+		Filter: f,
+	}
+
+	result := &results.DeleteResult{}
+
+	for {
+		cmd := c.newCmdOverride("deleteMany", payload, merged.APIOptions)
+		b, _, err := cmd.Execute(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp collectionDeleteManyResponse
+		if err := json.Unmarshal(b, &resp); err != nil {
+			return nil, err
+		}
+
+		result.DeletedCount += resp.Status.DeletedCount
+
+		if !resp.Status.MoreData {
+			break
+		}
+	}
+
+	return result, nil
 }
 
 // CountDocuments counts documents after applying filter f. Count operations are

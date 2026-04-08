@@ -3,10 +3,18 @@ package astradb_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	astradb "github.com/datastax/astra-db-go"
 	"github.com/datastax/astra-db-go/filter"
+	"github.com/datastax/astra-db-go/options"
+	"github.com/datastax/astra-db-go/update"
 )
 
 // TODO: I captured these responses for future tests but if we don't end up using them, we should remove them.
@@ -114,6 +122,337 @@ func TestDeleteOneResponseDeserialization(t *testing.T) {
 				t.Errorf("deletedCount = %d, want %d", resp.Status.DeletedCount, tt.deletedCount)
 			}
 		})
+	}
+}
+
+// TestDeleteManyPayloadSerialization verifies the deleteMany command payload
+// matches the expected Data API JSON format from the docs:
+//
+//	"deleteMany": {
+//	  "filter": {"$and": [
+//	    {"is_checked_out": false},
+//	    {"number_of_pages": {"$lt": 300}}
+//	  ]}
+//	}
+func TestDeleteManyPayloadSerialization(t *testing.T) {
+	// TODO: could probably make this work with testutils helpers. But - it's just different
+	// enough with the wrapper, etc., that leaving it separate for now.
+	tests := []struct {
+		name     string
+		filter   astradb.CollectionFilter
+		expected string
+	}{
+		{
+			name:     "filter docs example - raw",
+			filter:   filter.F{"$and": filter.A{filter.F{"is_checked_out": false}, filter.F{"number_of_pages": filter.F{"$lt": 300}}}},
+			expected: `{"deleteMany":{"filter":{"$and":[{"is_checked_out":false},{"number_of_pages":{"$lt":300}}]}}}`,
+		},
+		{
+			name:     "filter docs example - fluent",
+			filter:   filter.And(filter.Eq("is_checked_out", false), filter.Lt("number_of_pages", 300)),
+			expected: `{"deleteMany":{"filter":{"$and":[{"is_checked_out":false},{"number_of_pages":{"$lt":300}}]}}}`,
+		},
+		{
+			name:     "empty filter deletes all",
+			filter:   filter.F{},
+			expected: `{"deleteMany":{"filter":{}}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			type deleteManyPayload struct {
+				Filter any `json:"filter,omitempty"`
+			}
+			payload := deleteManyPayload{
+				Filter: tt.filter,
+			}
+			wrapped := map[string]any{"deleteMany": payload}
+			got, err := json.Marshal(wrapped)
+			if err != nil {
+				t.Fatalf("json.Marshal error: %v", err)
+			}
+			if string(got) != tt.expected {
+				t.Errorf("payload mismatch\n  got:  %s\n  want: %s", string(got), tt.expected)
+			}
+		})
+	}
+}
+
+// TestDeleteManyResponseDeserialization verifies we correctly parse the deleteMany response,
+// including the moreData pagination field.
+func TestDeleteManyResponseDeserialization(t *testing.T) {
+	tests := []struct {
+		name         string
+		response     string
+		deletedCount int
+		moreData     bool
+	}{
+		{
+			name:         "partial page with more data",
+			response:     `{"status":{"deletedCount":20,"moreData":true}}`,
+			deletedCount: 20,
+			moreData:     true,
+		},
+		{
+			name:         "final page",
+			response:     `{"status":{"deletedCount":5,"moreData":false}}`,
+			deletedCount: 5,
+			moreData:     false,
+		},
+		{
+			name:         "none deleted",
+			response:     `{"status":{"deletedCount":0}}`,
+			deletedCount: 0,
+			moreData:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			type deleteManyResponse struct {
+				Status struct {
+					DeletedCount int  `json:"deletedCount"`
+					MoreData     bool `json:"moreData"`
+				} `json:"status"`
+			}
+			var resp deleteManyResponse
+			if err := json.Unmarshal([]byte(tt.response), &resp); err != nil {
+				t.Fatalf("json.Unmarshal error: %v", err)
+			}
+			if resp.Status.DeletedCount != tt.deletedCount {
+				t.Errorf("deletedCount = %d, want %d", resp.Status.DeletedCount, tt.deletedCount)
+			}
+			if resp.Status.MoreData != tt.moreData {
+				t.Errorf("moreData = %v, want %v", resp.Status.MoreData, tt.moreData)
+			}
+		})
+	}
+}
+
+func TestCollectionDeleteManyEnforceNonNilFilters(t *testing.T) {
+	// Just make sure users cannot pass a nil filter. "Empty" filter feels
+	// more intentional.
+	coll := &astradb.Collection{}
+	_, err := coll.DeleteMany(context.Background(), nil)
+	if err == nil {
+		t.Errorf("Expected error when filter is nil. Got %v", err)
+	}
+	if err != astradb.ErrNilFilter {
+		t.Errorf("Expected ErrNilFilter when filter is nil. Got %v", err)
+	}
+}
+
+// newTestCollection creates a Collection backed by the given httptest.Server.
+func newTestCollection(ts *httptest.Server, apiOpts ...options.APIOption) *astradb.Collection {
+	allOpts := append([]options.APIOption{options.WithToken("test-token")}, apiOpts...)
+	client := astradb.NewClient(allOpts...)
+	db := client.Database(ts.URL)
+	return db.Collection("test_coll")
+}
+
+func TestDeleteManyTimeout(t *testing.T) {
+	var calls atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		// Simulate a slow paginated response — always returns moreData=true with a delay
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"deletedCount":20,"moreData":true}}`)
+	}))
+	defer ts.Close()
+
+	coll := newTestCollection(ts)
+	ctx := context.Background()
+
+	_, err := coll.DeleteMany(ctx, filter.F{"status": "old"},
+		options.CollectionDeleteMany().SetTimeout(250*time.Millisecond),
+	)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context.DeadlineExceeded, got: %v", err)
+	}
+	// Should have made at least 2 calls before timing out
+	if c := calls.Load(); c < 2 {
+		t.Errorf("expected at least 2 calls before timeout, got %d", c)
+	}
+}
+
+func TestUpdateManyTimeout(t *testing.T) {
+	var calls atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"matchedCount":20,"modifiedCount":20,"moreData":true}}`)
+	}))
+	defer ts.Close()
+
+	coll := newTestCollection(ts)
+	ctx := context.Background()
+
+	_, err := coll.UpdateMany(ctx, filter.F{"status": "old"}, update.Coll().Set("status", "archived"),
+		options.CollectionUpdateMany().SetTimeout(250*time.Millisecond),
+	)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context.DeadlineExceeded, got: %v", err)
+	}
+	if c := calls.Load(); c < 2 {
+		t.Errorf("expected at least 2 calls before timeout, got %d", c)
+	}
+}
+
+func TestDeleteManyHierarchyTimeout(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"deletedCount":20,"moreData":true}}`)
+	}))
+	defer ts.Close()
+
+	// Set GeneralMethod timeout at the client level
+	coll := newTestCollection(ts, options.WithGeneralMethodTimeout(250*time.Millisecond))
+	ctx := context.Background()
+
+	_, err := coll.DeleteMany(ctx, filter.F{"status": "old"})
+	if err == nil {
+		t.Fatal("expected timeout error from hierarchy timeout, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context.DeadlineExceeded, got: %v", err)
+	}
+}
+
+func TestDeleteManyMethodTimeoutOverridesHierarchy(t *testing.T) {
+	var calls atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		// Return moreData=false on first call so it completes
+		fmt.Fprint(w, `{"status":{"deletedCount":5,"moreData":false}}`)
+	}))
+	defer ts.Close()
+
+	// Hierarchy has a very short timeout that would expire
+	coll := newTestCollection(ts, options.WithGeneralMethodTimeout(1*time.Millisecond))
+	ctx := context.Background()
+
+	// Method-level timeout is generous enough to succeed
+	_, err := coll.DeleteMany(ctx, filter.F{"status": "old"},
+		options.CollectionDeleteMany().SetTimeout(5*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("expected success with method-level override, got: %v", err)
+	}
+	if c := calls.Load(); c != 1 {
+		t.Errorf("expected 1 call, got %d", c)
+	}
+}
+
+func TestDeleteManyAPIOptionsOverrideToken(t *testing.T) {
+	var receivedToken atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedToken.Store(r.Header.Get("Token"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"deletedCount":1,"moreData":false}}`)
+	}))
+	defer ts.Close()
+
+	coll := newTestCollection(ts) // uses "test-token" at client level
+	ctx := context.Background()
+
+	_, err := coll.DeleteMany(ctx, filter.F{"x": 1},
+		options.CollectionDeleteMany().
+			SetAPIOptions(options.API().SetToken("override-token")),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := receivedToken.Load().(string); got != "override-token" {
+		t.Errorf("expected token 'override-token' in request header, got %q", got)
+	}
+}
+
+func TestDeleteOneAPIOptionsOverrideToken(t *testing.T) {
+	var receivedToken atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedToken.Store(r.Header.Get("Token"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"deletedCount":1}}`)
+	}))
+	defer ts.Close()
+
+	coll := newTestCollection(ts)
+	ctx := context.Background()
+
+	_, err := coll.DeleteOne(ctx, filter.F{"x": 1},
+		options.CollectionDeleteOne().
+			SetAPIOptions(options.API().SetToken("override-token")),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := receivedToken.Load().(string); got != "override-token" {
+		t.Errorf("expected token 'override-token' in request header, got %q", got)
+	}
+}
+
+func TestUpdateOneAPIOptionsOverrideToken(t *testing.T) {
+	var receivedToken atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedToken.Store(r.Header.Get("Token"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"matchedCount":1,"modifiedCount":1}}`)
+	}))
+	defer ts.Close()
+
+	coll := newTestCollection(ts)
+	ctx := context.Background()
+
+	_, err := coll.UpdateOne(ctx, filter.F{"x": 1}, update.Coll().Set("x", 2),
+		options.CollectionUpdateOne().
+			SetAPIOptions(options.API().SetToken("override-token")),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := receivedToken.Load().(string); got != "override-token" {
+		t.Errorf("expected token 'override-token' in request header, got %q", got)
+	}
+}
+
+func TestResolveGeneralMethodTimeoutFromAPIOverride(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"deletedCount":20,"moreData":true}}`)
+	}))
+	defer ts.Close()
+
+	// No GeneralMethod timeout at client level
+	coll := newTestCollection(ts)
+	ctx := context.Background()
+
+	// Set GeneralMethod timeout via APIOptions override
+	_, err := coll.DeleteMany(ctx, filter.F{"status": "old"},
+		options.CollectionDeleteMany().
+			SetAPIOptions(
+				options.API().SetTimeout(
+					options.Timeout().SetGeneralMethod(250*time.Millisecond),
+				),
+			),
+	)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context.DeadlineExceeded, got: %v", err)
 	}
 }
 

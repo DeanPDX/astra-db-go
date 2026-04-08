@@ -1,4 +1,4 @@
-// Copyright DataStax, Inc.
+// Copyright IBM Corp.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,6 +52,10 @@ type TableFindOptions struct {
 
 	// InitialPageState is used for pagination to fetch the next page of results
 	InitialPageState *string `json:"pageState,omitempty"`
+
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
 }
 
 // SetPageState sets the initial page state for pagination.

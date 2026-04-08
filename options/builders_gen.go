@@ -1,4 +1,4 @@
-// Copyright DataStax, Inc.
+// Copyright IBM Corp.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -162,6 +162,61 @@ func (b *collectionDefaultIdOptionsBuilder) SetType(v DefaultIdType) *collection
 	return b
 }
 
+// CollectionDeleteManyOption configures a CollectionDeleteMany operation.
+// You can use the fluent-style builder or a pointer to [CollectionDeleteManyOptions] interchangeably.
+//
+// Example using the fluent builder ([CollectionDeleteMany]):
+//
+//	// No need to use pointer for builder; the builder handles that for you.
+//	opts := options.CollectionDeleteMany().SetTimeout(10 * time.Second)
+//
+// Example using a pointer to [CollectionDeleteManyOptions] without the fluent builder:
+//
+//	opts := &options.CollectionDeleteManyOptions{Timeout: ptr.To(10 * time.Second)}
+type CollectionDeleteManyOption = Builder[CollectionDeleteManyOptions]
+
+// Setters implements Builder[CollectionDeleteManyOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CollectionDeleteManyOptions].
+func (o *CollectionDeleteManyOptions) Setters() []func(*CollectionDeleteManyOptions) {
+	return NoopBuilder(o)
+}
+
+// Validate implements Validator for CollectionDeleteManyOptions.
+func (o *CollectionDeleteManyOptions) Validate() error { return nil }
+
+// collectionDeleteManyOptionsBuilder is a builder for CollectionDeleteManyOptions.
+type collectionDeleteManyOptionsBuilder struct {
+	setters []func(*CollectionDeleteManyOptions)
+}
+
+// CollectionDeleteMany creates a new builder for [CollectionDeleteManyOptions].
+func CollectionDeleteMany() *collectionDeleteManyOptionsBuilder {
+	return &collectionDeleteManyOptionsBuilder{}
+}
+
+// Setters implements Builder[CollectionDeleteManyOptions].
+func (b *collectionDeleteManyOptionsBuilder) Setters() []func(*CollectionDeleteManyOptions) {
+	return b.setters
+}
+
+// SetTimeout sets the Timeout option.
+// Timeout is the overall timeout for the entire paginated operation.
+// Overrides the GeneralMethod timeout from the hierarchy. Client-side only.
+func (b *collectionDeleteManyOptionsBuilder) SetTimeout(v time.Duration) *collectionDeleteManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionDeleteManyOptions) { o.Timeout = &v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionDeleteManyOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionDeleteManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionDeleteManyOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
 // CollectionDeleteOneOption configures a CollectionDeleteOne operation.
 // You can use the fluent-style builder or a pointer to [CollectionDeleteOneOptions] interchangeably.
 //
@@ -203,6 +258,16 @@ func (b *collectionDeleteOneOptionsBuilder) Setters() []func(*CollectionDeleteOn
 // This determines which document is deleted when the filter matches multiple documents.
 func (b *collectionDeleteOneOptionsBuilder) SetSort(v sort.Sortable) *collectionDeleteOneOptionsBuilder {
 	b.setters = append(b.setters, func(o *CollectionDeleteOneOptions) { o.Sort = v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionDeleteOneOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionDeleteOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionDeleteOneOptions) {
+		o.APIOptions = Merge(v...)
+	})
 	return b
 }
 
@@ -268,6 +333,85 @@ func (b *collectionFindOneAndUpdateOptionsBuilder) SetUpsert(v bool) *collection
 // ReturnDocument specifies whether to return the document before or after the update.
 func (b *collectionFindOneAndUpdateOptionsBuilder) SetReturnDocument(v ReturnDocument) *collectionFindOneAndUpdateOptionsBuilder {
 	b.setters = append(b.setters, func(o *CollectionFindOneAndUpdateOptions) { o.ReturnDocument = &v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionFindOneAndUpdateOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionFindOneAndUpdateOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndUpdateOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
+// CollectionFindOneOption configures a CollectionFindOne operation.
+// You can use the fluent-style builder or a pointer to [CollectionFindOneOptions] interchangeably.
+//
+// Example using the fluent builder ([CollectionFindOne]):
+//
+//	// No need to use pointer for builder; the builder handles that for you.
+//	opts := options.CollectionFindOne().SetIncludeSimilarity(false)
+//
+// Example using a pointer to [CollectionFindOneOptions] without the fluent builder:
+//
+//	opts := &options.CollectionFindOneOptions{IncludeSimilarity: ptr.To(false)}
+type CollectionFindOneOption = Builder[CollectionFindOneOptions]
+
+// Setters implements Builder[CollectionFindOneOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CollectionFindOneOptions].
+func (o *CollectionFindOneOptions) Setters() []func(*CollectionFindOneOptions) {
+	return NoopBuilder(o)
+}
+
+// Validate implements Validator for CollectionFindOneOptions.
+func (o *CollectionFindOneOptions) Validate() error { return nil }
+
+// collectionFindOneOptionsBuilder is a builder for CollectionFindOneOptions.
+type collectionFindOneOptionsBuilder struct {
+	setters []func(*CollectionFindOneOptions)
+}
+
+// CollectionFindOne creates a new builder for [CollectionFindOneOptions].
+func CollectionFindOne() *collectionFindOneOptionsBuilder {
+	return &collectionFindOneOptionsBuilder{}
+}
+
+// Setters implements Builder[CollectionFindOneOptions].
+func (b *collectionFindOneOptionsBuilder) Setters() []func(*CollectionFindOneOptions) {
+	return b.setters
+}
+
+// SetSort sets the Sort option.
+// Sort specifies the sort order to apply before selecting the document to update.
+func (b *collectionFindOneOptionsBuilder) SetSort(v sort.Sortable) *collectionFindOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneOptions) { o.Sort = v })
+	return b
+}
+
+// SetProjection sets the Projection option.
+// Projection controls which fields are included or excluded in the returned document.
+func (b *collectionFindOneOptionsBuilder) SetProjection(v map[string]any) *collectionFindOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneOptions) { o.Projection = v })
+	return b
+}
+
+// SetIncludeSimilarity sets the IncludeSimilarity option.
+// IncludeSimilarity if true, include the similarity score in the result via the
+// $similarity field.
+func (b *collectionFindOneOptionsBuilder) SetIncludeSimilarity(v bool) *collectionFindOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneOptions) { o.IncludeSimilarity = &v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionFindOneOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionFindOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneOptions) {
+		o.APIOptions = Merge(v...)
+	})
 	return b
 }
 
@@ -364,6 +508,16 @@ func (b *collectionFindOptionsBuilder) SetInitialPageState(v string) *collection
 	return b
 }
 
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionFindOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionFindOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
 // CollectionUpdateManyOption configures a CollectionUpdateMany operation.
 // You can use the fluent-style builder or a pointer to [CollectionUpdateManyOptions] interchangeably.
 //
@@ -405,6 +559,24 @@ func (b *collectionUpdateManyOptionsBuilder) Setters() []func(*CollectionUpdateM
 // Upsert if true, inserts a new document if no document matches the filter.
 func (b *collectionUpdateManyOptionsBuilder) SetUpsert(v bool) *collectionUpdateManyOptionsBuilder {
 	b.setters = append(b.setters, func(o *CollectionUpdateManyOptions) { o.Upsert = &v })
+	return b
+}
+
+// SetTimeout sets the Timeout option.
+// Timeout is the overall timeout for the entire paginated operation.
+// Overrides the GeneralMethod timeout from the hierarchy. Client-side only.
+func (b *collectionUpdateManyOptionsBuilder) SetTimeout(v time.Duration) *collectionUpdateManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionUpdateManyOptions) { o.Timeout = &v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionUpdateManyOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionUpdateManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionUpdateManyOptions) {
+		o.APIOptions = Merge(v...)
+	})
 	return b
 }
 
@@ -457,6 +629,16 @@ func (b *collectionUpdateOneOptionsBuilder) SetSort(v sort.Sortable) *collection
 // Upsert if true, inserts a new document if no document matches the filter.
 func (b *collectionUpdateOneOptionsBuilder) SetUpsert(v bool) *collectionUpdateOneOptionsBuilder {
 	b.setters = append(b.setters, func(o *CollectionUpdateOneOptions) { o.Upsert = &v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionUpdateOneOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionUpdateOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionUpdateOneOptions) {
+		o.APIOptions = Merge(v...)
+	})
 	return b
 }
 
@@ -1102,6 +1284,7 @@ func (b *insertOneOptionsBuilder) SetTimeout(v time.Duration) *insertOneOptionsB
 }
 
 // LexicalOption configures a Lexical operation.
+type LexicalOption = Builder[LexicalOptions]
 
 // Setters implements Builder[LexicalOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Builder[LexicalOptions].
@@ -1239,6 +1422,7 @@ func (b *listIndexesOptionsBuilder) SetExplain(v bool) *listIndexesOptionsBuilde
 }
 
 // RerankOption configures a Rerank operation.
+type RerankOption = Builder[RerankOptions]
 
 // Setters implements Builder[RerankOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Builder[RerankOptions].
@@ -1265,6 +1449,7 @@ func (b *rerankOptionsBuilder) Setters() []func(*RerankOptions) {
 }
 
 // SerdesOption configures a Serdes operation.
+type SerdesOption = Builder[SerdesOptions]
 
 // Setters implements Builder[SerdesOptions] allowing the raw struct to be
 // passed directly to methods that accept ...Builder[SerdesOptions].
@@ -1375,6 +1560,16 @@ func (b *tableFindOptionsBuilder) SetInitialPageState(v string) *tableFindOption
 	return b
 }
 
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *tableFindOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *tableFindOptionsBuilder {
+	b.setters = append(b.setters, func(o *TableFindOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
 // TimeoutOption configures a Timeout operation.
 // You can use the fluent-style builder or a pointer to [TimeoutOptions] interchangeably.
 //
@@ -1430,6 +1625,14 @@ func (b *timeoutOptionsBuilder) SetConnection(v time.Duration) *timeoutOptionsBu
 // BulkOperation is the timeout for bulk operations like insertMany
 func (b *timeoutOptionsBuilder) SetBulkOperation(v time.Duration) *timeoutOptionsBuilder {
 	b.setters = append(b.setters, func(o *TimeoutOptions) { o.BulkOperation = &v })
+	return b
+}
+
+// SetGeneralMethod sets the GeneralMethod option.
+// GeneralMethod is the overall timeout for paginated operations like deleteMany and updateMany.
+// When set, the entire multi-page operation must complete within this duration.
+func (b *timeoutOptionsBuilder) SetGeneralMethod(v time.Duration) *timeoutOptionsBuilder {
+	b.setters = append(b.setters, func(o *TimeoutOptions) { o.GeneralMethod = &v })
 	return b
 }
 
