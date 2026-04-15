@@ -38,8 +38,9 @@ func init() {
 		{Name: "CollectionCreate", Run: CollectionCreate},
 		{Name: "CollectionInsertMany", Run: CollectionInsertMany},
 		{Name: "CollectionItemAlreadyExists", Run: CollectionItemAlreadyExists},
-		{Name: "CollectCount", Run: CollectCount},
-		{Name: "CollectCountUpperBound", Run: CollectCountUpperBound},
+		{Name: "CollectionCount", Run: CollectionCount},
+		{Name: "CollectionCountUpperBound", Run: CollectionCountUpperBound},
+		{Name: "CollectionEstimatedCount", Run: CollectionEstimatedCount},
 		{Name: "CollectionFind", Run: CollectionFind},
 		{Name: "CollectionFindOne", Run: CollectionFindOne},
 		{Name: "CollectionCursorPagination", Run: CollectionCursorPagination},
@@ -53,7 +54,16 @@ func init() {
 		{Name: "CollectionFindOneAndUpdateAfter", Run: CollectionFindOneAndUpdateAfter},
 		{Name: "CollectionFindOneAndUpdateUpsert", Run: CollectionFindOneAndUpdateUpsert},
 		{Name: "CollectionFindOneAndUpdateProjection", Run: CollectionFindOneAndUpdateProjection},
+		{Name: "CollectionReplaceOne", Run: CollectionReplaceOne},
+		{Name: "CollectionReplaceOneUpsert", Run: CollectionReplaceOneUpsert},
+		{Name: "CollectionReplaceOneNoMatch", Run: CollectionReplaceOneNoMatch},
+		{Name: "CollectionFindOneAndReplace", Run: CollectionFindOneAndReplace},
+		{Name: "CollectionFindOneAndReplaceAfter", Run: CollectionFindOneAndReplaceAfter},
+		{Name: "CollectionFindOneAndReplaceUpsert", Run: CollectionFindOneAndReplaceUpsert},
+		{Name: "CollectionFindOneAndReplaceProjection", Run: CollectionFindOneAndReplaceProjection},
 		{Name: "CollectionDeleteOne", Run: CollectionDeleteOne},
+		{Name: "CollectionFindOneAndDelete", Run: CollectionFindOneAndDelete},
+		{Name: "CollectionFindOneAndDeleteProjection", Run: CollectionFindOneAndDeleteProjection},
 		{Name: "CollectionDrop", Run: CollectionDrop},
 		// Vector search tests
 		{Name: "CollectionVectorCreate", Run: CollectionVectorCreate},
@@ -119,7 +129,11 @@ func CollectionItemAlreadyExists(e *harness.TestEnv) error {
 		return err
 	}
 	// Now set inserted ID to existing one and insert again
-	item.ID = resp.Status.InsertedIds[0]
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
+	item.ID = insertedID
 	resp, err = c.InsertOne(ctx, item)
 	if err == nil {
 		return errors.New("expecting duplicate insert error. Got nil")
@@ -140,18 +154,18 @@ func CollectionItemAlreadyExists(e *harness.TestEnv) error {
 	return nil
 }
 
-func CollectCount(e *harness.TestEnv) error {
+func CollectionCount(e *harness.TestEnv) error {
 	ctx := context.Background()
 	db := e.DefaultDb()
 	collection := db.Collection(collectionName)
-	count, err := collection.CountDocuments(ctx, filter.Gte("properties.intProperty", 13), 0)
+	count, err := collection.CountDocuments(ctx, filter.Gte("properties.intProperty", 13), 1000)
 	if count == 0 {
 		return errors.New("was expecting non-zero count")
 	}
 	return err
 }
 
-func CollectCountUpperBound(e *harness.TestEnv) error {
+func CollectionCountUpperBound(e *harness.TestEnv) error {
 	ctx := context.Background()
 	db := e.DefaultDb()
 	collection := db.Collection(collectionName)
@@ -160,6 +174,17 @@ func CollectCountUpperBound(e *harness.TestEnv) error {
 		return fmt.Errorf("expecting err:%v. Got: %v", results.ErrTooManyDocumentsToCount, err)
 	}
 	return nil
+}
+
+func CollectionEstimatedCount(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	collection := db.Collection(collectionName)
+	count, err := collection.EstimatedDocumentCount(ctx)
+	if count < 0 {
+		return errors.New("was expecting non-negative count")
+	}
+	return err
 }
 
 func CollectionFindOne(e *harness.TestEnv) error {
@@ -173,7 +198,10 @@ func CollectionFindOne(e *harness.TestEnv) error {
 		return err
 	}
 	// Get inserted ID and use it to then find our newly-inserted record
-	insertedID := resp.Status.InsertedIds[0]
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
 	var document SimpleObject
 	err = c.FindOne(ctx, filter.F{"_id": insertedID}).Decode(&document)
 	if err != nil {
@@ -343,7 +371,10 @@ func CollectionUpdateOne(e *harness.TestEnv) error {
 	if err != nil {
 		return fmt.Errorf("failed to insert document: %w", err)
 	}
-	insertedID := resp.Status.InsertedIds[0]
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
 
 	// Update the document's name
 	result, err := c.UpdateOne(ctx, filter.F{"_id": insertedID}, update.Coll().Set("name", "UpdateOneModified"))
@@ -574,7 +605,10 @@ func CollectionFindOneAndUpdate(e *harness.TestEnv) error {
 	if err != nil {
 		return fmt.Errorf("failed to insert document: %w", err)
 	}
-	insertedID := resp.Status.InsertedIds[0]
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
 
 	// FindOneAndUpdate — default returnDocument is "before"
 	var doc SimpleObject
@@ -614,7 +648,10 @@ func CollectionFindOneAndUpdateAfter(e *harness.TestEnv) error {
 	if err != nil {
 		return fmt.Errorf("failed to insert document: %w", err)
 	}
-	insertedID := resp.Status.InsertedIds[0]
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
 
 	// FindOneAndUpdate with ReturnDocumentAfter
 	var doc SimpleObject
@@ -685,7 +722,10 @@ func CollectionFindOneAndUpdateProjection(e *harness.TestEnv) error {
 	if err != nil {
 		return fmt.Errorf("failed to insert document: %w", err)
 	}
-	insertedID := resp.Status.InsertedIds[0]
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
 
 	// FindOneAndUpdate with projection — only include "name"
 	var doc map[string]any
@@ -714,6 +754,286 @@ func CollectionFindOneAndUpdateProjection(e *harness.TestEnv) error {
 	return nil
 }
 
+func CollectionReplaceOne(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document to update
+	original := SimpleObject{Name: "ReplaceOneOriginal"}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
+
+	// Replace the document
+	result, err := c.ReplaceOne(ctx, filter.F{"_id": insertedID}, SimpleObject{Name: "ReplaceOneNew"})
+	if err != nil {
+		return fmt.Errorf("ReplaceOne failed: %w", err)
+	}
+
+	if result.MatchedCount != 1 {
+		return fmt.Errorf("expected MatchedCount 1, got %d", result.MatchedCount)
+	}
+	if result.ModifiedCount != 1 {
+		return fmt.Errorf("expected ModifiedCount 1, got %d", result.ModifiedCount)
+	}
+	if result.UpsertedCount != 0 {
+		return fmt.Errorf("expected UpsertedCount 0, got %d", result.UpsertedCount)
+	}
+
+	// Verify the replacement by reading back
+	var doc SimpleObject
+	if err := c.FindOne(ctx, filter.F{"_id": insertedID}).Decode(&doc); err != nil {
+		return fmt.Errorf("FindOne after replace failed: %w", err)
+	}
+	if doc.Name != "ReplaceOneNew" {
+		return fmt.Errorf("expected name 'ReplaceOneNew', got '%s'", doc.Name)
+	}
+	if doc.ID != insertedID {
+		return fmt.Errorf("expected ID '%v' to remain unchanged, got '%v'", insertedID, doc.ID)
+	}
+
+	return nil
+}
+
+func CollectionReplaceOneUpsert(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Adding timestamp so this test survives retries. At some point, it might be good
+	// to either make ALL tests survive retries, or add a "cleanup" flag to tests that
+	// indicate they should run even if other tests fail. Or maybe it is more like we
+	// make these grouped tests "suites" and we have setup and teardown functions for
+	// suites.
+	upsertID := fmt.Sprintf("replace-upsert-id-%d", time.Now().Unix())
+
+	// Replace a document that doesn't exist
+	result, err := c.ReplaceOne(ctx,
+		filter.F{"_id": upsertID},
+		SimpleObject{ID: upsertID, Name: "UpsertedDoc"},
+		options.CollectionReplaceOne().SetUpsert(true),
+	)
+	if err != nil {
+		return fmt.Errorf("ReplaceOne upsert failed: %w", err)
+	}
+
+	if result.MatchedCount != 0 {
+		return fmt.Errorf("expected MatchedCount 0, got %d", result.MatchedCount)
+	}
+	if result.ModifiedCount != 0 {
+		return fmt.Errorf("expected ModifiedCount 0, got %d", result.ModifiedCount)
+	}
+	if result.UpsertedCount != 1 {
+		return fmt.Errorf("expected UpsertedCount 1, got %d", result.UpsertedCount)
+	}
+	if result.UpsertedId == nil {
+		return errors.New("expected UpsertedId to be non-nil")
+	}
+
+	// Verify the document was created correctly
+	var doc SimpleObject
+	if err := c.FindOne(ctx, filter.F{"_id": upsertID}).Decode(&doc); err != nil {
+		return fmt.Errorf("FindOne after ReplaceOne upsert failed: %w", err)
+	}
+	if doc.Name != "UpsertedDoc" {
+		return fmt.Errorf("expected name 'UpsertedDoc', got '%s'", doc.Name)
+	}
+
+	return nil
+}
+
+func CollectionReplaceOneNoMatch(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	result, err := c.ReplaceOne(ctx,
+		filter.F{"_id": "nonexistent-replace-id"},
+		SimpleObject{Name: "ShouldNotBeCreated"},
+	)
+	if err != nil {
+		return fmt.Errorf("ReplaceOne no-match failed: %w", err)
+	}
+
+	if result.MatchedCount != 0 {
+		return fmt.Errorf("expected MatchedCount 0, got %d", result.MatchedCount)
+	}
+	if result.ModifiedCount != 0 {
+		return fmt.Errorf("expected ModifiedCount 0, got %d", result.ModifiedCount)
+	}
+	if result.UpsertedCount != 0 {
+		return fmt.Errorf("expected UpsertedCount 0, got %d", result.UpsertedCount)
+	}
+
+	return nil
+}
+
+func CollectionFindOneAndReplace(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document to update
+	original := SimpleObject{Name: "FindOneAndReplaceOriginal"}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
+
+	// FindOneAndReplace — default returnDocument is "before"
+	var doc SimpleObject
+	err = c.FindOneAndReplace(ctx,
+		filter.F{"_id": insertedID},
+		SimpleObject{Name: "FindOneAndReplaceModified"},
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndReplace failed: %w", err)
+	}
+
+	// Should return the document BEFORE the update
+	if doc.Name != "FindOneAndReplaceOriginal" {
+		return fmt.Errorf("expected name 'FindOneAndReplaceOriginal' (before update), got '%s'", doc.Name)
+	}
+
+	// Verify the DB has the updated value
+	var dbDoc SimpleObject
+	if err := c.FindOne(ctx, filter.F{"_id": insertedID}).Decode(&dbDoc); err != nil {
+		return fmt.Errorf("FindOne after FindOneAndReplace failed: %w", err)
+	}
+	if dbDoc.Name != "FindOneAndReplaceModified" {
+		return fmt.Errorf("expected DB name 'FindOneAndReplaceModified', got '%s'", dbDoc.Name)
+	}
+
+	return nil
+}
+
+func CollectionFindOneAndReplaceAfter(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document
+	original := SimpleObject{Name: "BeforeAfterReplaceTest"}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
+
+	// FindOneAndReplace with ReturnDocumentAfter
+	var doc SimpleObject
+	err = c.FindOneAndReplace(ctx,
+		filter.F{"_id": insertedID},
+		SimpleObject{Name: "AfterValueReplace"},
+		options.CollectionFindOneAndReplace().SetReturnDocument(options.ReturnDocumentAfter),
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndReplace with returnDocument=after failed: %w", err)
+	}
+
+	// Should return the document AFTER the update
+	if doc.Name != "AfterValueReplace" {
+		return fmt.Errorf("expected name 'AfterValueReplace' (after update), got '%s'", doc.Name)
+	}
+
+	return nil
+}
+
+func CollectionFindOneAndReplaceUpsert(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	upsertID := fmt.Sprintf("find-and-replace-upsert-%d", time.Now().Unix())
+
+	// FindOneAndReplace with upsert on a non-existent document, return after
+	var doc map[string]any
+	err := c.FindOneAndReplace(ctx,
+		filter.F{"_id": upsertID},
+		SimpleObject{Name: "UpsertedViaFindOneAndReplace"},
+		options.CollectionFindOneAndReplace().
+			SetUpsert(true).
+			SetReturnDocument(options.ReturnDocumentAfter),
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndReplace upsert failed: %w", err)
+	}
+
+	if doc["name"] != "UpsertedViaFindOneAndReplace" {
+		return fmt.Errorf("expected name 'UpsertedViaFindOneAndReplace', got '%v'", doc["name"])
+	}
+
+	// Verify document exists in DB
+	var dbDoc map[string]any
+	if err := c.FindOne(ctx, filter.F{"_id": upsertID}).Decode(&dbDoc); err != nil {
+		return fmt.Errorf("FindOne after upsert failed: %w", err)
+	}
+	if dbDoc["name"] != "UpsertedViaFindOneAndReplace" {
+		return fmt.Errorf("expected DB name 'UpsertedViaFindOneAndReplace', got '%v'", dbDoc["name"])
+	}
+
+	return nil
+}
+
+func CollectionFindOneAndReplaceProjection(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document with multiple fields
+	original := SimpleObject{Name: "ReplaceProjectionTest", Properties: Properties{
+		PropertyOne: "val1",
+		IntProperty: 42,
+	}}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
+
+	// FindOneAndReplace with projection — only include "name"
+	var doc map[string]any
+	err = c.FindOneAndReplace(ctx,
+		filter.F{"_id": insertedID},
+		SimpleObject{Name: "ReplaceProjectionUpdated"},
+		options.CollectionFindOneAndReplace().
+			SetReturnDocument(options.ReturnDocumentAfter).
+			SetProjection(map[string]any{"name": true}),
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndReplace with projection failed: %w", err)
+	}
+
+	// Should have _id and name, but NOT properties
+	if _, ok := doc["_id"]; !ok {
+		return errors.New("expected _id in projected result")
+	}
+	if doc["name"] != "ReplaceProjectionUpdated" {
+		return fmt.Errorf("expected name 'ReplaceProjectionUpdated', got '%v'", doc["name"])
+	}
+	if _, ok := doc["properties"]; ok {
+		return errors.New("expected properties to be excluded by projection")
+	}
+
+	return nil
+}
+
 func CollectionDeleteOne(e *harness.TestEnv) error {
 	ctx := context.Background()
 	db := e.DefaultDb()
@@ -725,7 +1045,10 @@ func CollectionDeleteOne(e *harness.TestEnv) error {
 	if err != nil {
 		return fmt.Errorf("failed to insert document: %w", err)
 	}
-	insertedID := resp.Status.InsertedIds[0]
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
 
 	// Delete the document
 	result, err := c.DeleteOne(ctx, filter.F{"_id": insertedID})
@@ -738,10 +1061,91 @@ func CollectionDeleteOne(e *harness.TestEnv) error {
 	return nil
 }
 
+func CollectionFindOneAndDelete(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document to update
+	original := SimpleObject{Name: "FindOneAndDeleteOriginal"}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
+
+	// FindOneAndDelete — returnDocument is always "before"
+	var doc SimpleObject
+	err = c.FindOneAndDelete(ctx,
+		filter.F{"_id": insertedID},
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndDelete failed: %w", err)
+	}
+
+	// Should return the document BEFORE the update
+	if doc.Name != "FindOneAndDeleteOriginal" {
+		return fmt.Errorf("expected name 'FindOneAndDeleteOriginal' (before update), got '%s'", doc.Name)
+	}
+
+	// Verify the DB does not have the updated value
+	var dbDoc SimpleObject
+	if err := c.FindOne(ctx, filter.F{"_id": insertedID}).Decode(&dbDoc); !errors.Is(err, results.ErrNoDocuments) {
+		return fmt.Errorf("FindOne after FindOneAndDelete did not return ErrNoDocuments: %w", err)
+	}
+	return nil
+}
+
+func CollectionFindOneAndDeleteProjection(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+	c := db.Collection(collectionName)
+
+	// Insert a document with multiple fields
+	original := SimpleObject{Name: "ProjectionTest", Properties: Properties{
+		PropertyOne: "val1",
+		IntProperty: 42,
+	}}
+	resp, err := c.InsertOne(ctx, original)
+	if err != nil {
+		return fmt.Errorf("failed to insert document: %w", err)
+	}
+	var insertedID string
+	if err := resp.DecodeID(&insertedID); err != nil {
+		return err
+	}
+
+	// FindOneAndDelete with projection — only include "name"
+	var doc map[string]any
+	err = c.FindOneAndDelete(ctx,
+		filter.F{"_id": insertedID},
+		options.CollectionFindOneAndDelete().SetProjection(map[string]any{"name": true}),
+	).Decode(&doc)
+	if err != nil {
+		return fmt.Errorf("FindOneAndDelete with projection failed: %w", err)
+	}
+
+	// Should have _id and name, but NOT properties
+	if _, ok := doc["_id"]; !ok {
+		return errors.New("expected _id in projected result")
+	}
+	if doc["name"] != "ProjectionTest" {
+		return fmt.Errorf("expected name 'ProjectionTest', got '%v'", doc["name"])
+	}
+	if _, ok := doc["properties"]; ok {
+		return errors.New("expected properties to be excluded by projection")
+	}
+
+	return nil
+}
+
 func CollectionDrop(e *harness.TestEnv) error {
 	ctx := context.Background()
 	db := e.DefaultDb()
-	err := db.DropCollection(ctx, collectionName)
+	err := db.Collection(collectionName).Drop(ctx)
 	return err
 }
 

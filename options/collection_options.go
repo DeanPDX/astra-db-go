@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/datastax/astra-db-go/ptr"
 	"github.com/datastax/astra-db-go/sort"
 )
 
@@ -157,6 +158,23 @@ type LexicalOptions struct{}
 
 type RerankOptions struct{}
 
+type CollectionInsertManyOptions struct {
+	Ordered     *bool       `json:"ordered,omitempty"`
+	ChunkSize   *int        `json:"-"`
+	Concurrency *int        `json:"-"`
+	APIOptions  *APIOptions `json:"-"`
+}
+
+func (o *CollectionInsertManyOptions) Validate() error {
+	if ptr.FromWithDefault(o.Ordered, false) && ptr.FromWithDefault(o.Concurrency, 1) != 1 {
+		return fmt.Errorf("concurrency must be unset or 1 when ordered is true")
+	}
+	if o.Concurrency != nil && *o.Concurrency <= 0 {
+		return fmt.Errorf("concurrency must be greater than 0")
+	}
+	return nil
+}
+
 // CollectionFindOptions represents options for finding documents in a collection
 type CollectionFindOptions struct {
 	// Sort specifies how to sort the results. Can be used for:
@@ -256,6 +274,17 @@ type CollectionFindOneOptions struct {
 	APIOptions *APIOptions `json:"-"`
 }
 
+// CollectionReplaceOneOptions represents options for a replaceOne operation.
+type CollectionReplaceOneOptions struct {
+	// Sort specifies the sort order to apply before selecting the document to replace.
+	Sort sort.Sortable `json:"sort,omitempty"`
+	// Upsert if true, inserts a new document if no document matches the filter.
+	Upsert *bool `json:"upsert,omitempty"`
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
+
 // ReturnDocument specifies whether to return the document before or after the update.
 type ReturnDocument string
 
@@ -276,6 +305,32 @@ type CollectionFindOneAndUpdateOptions struct {
 	Upsert *bool `json:"upsert,omitempty"`
 	// ReturnDocument specifies whether to return the document before or after the update.
 	ReturnDocument *ReturnDocument `json:"returnDocument,omitempty"`
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
+
+// CollectionFindOneAndReplaceOptions represents options for a findOneAndReplace operation.
+type CollectionFindOneAndReplaceOptions struct {
+	// Sort specifies the sort order to apply before selecting the document to replace.
+	Sort sort.Sortable `json:"sort,omitempty"`
+	// Projection controls which fields are included or excluded in the returned document.
+	Projection map[string]any `json:"projection,omitempty"`
+	// Upsert if true, inserts a new document if no document matches the filter.
+	Upsert *bool `json:"upsert,omitempty"`
+	// ReturnDocument specifies whether to return the document before or after the replacement.
+	ReturnDocument *ReturnDocument `json:"returnDocument,omitempty"`
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
+
+// CollectionFindOneAndDeleteOptions represents options for a findOneAndDelete operation.
+type CollectionFindOneAndDeleteOptions struct {
+	// Sort specifies the sort order to apply before selecting the document to delete.
+	Sort sort.Sortable `json:"sort,omitempty"`
+	// Projection controls which fields are included or excluded in the returned document.
+	Projection map[string]any `json:"projection,omitempty"`
 	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
 	// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
 	APIOptions *APIOptions `json:"-"`

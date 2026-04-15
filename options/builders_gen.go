@@ -271,6 +271,141 @@ func (b *collectionDeleteOneOptionsBuilder) SetAPIOptions(v ...Builder[APIOption
 	return b
 }
 
+// CollectionFindOneAndDeleteOption configures a CollectionFindOneAndDelete operation.
+// You can use the fluent-style builder or a pointer to [CollectionFindOneAndDeleteOptions] interchangeably.
+//
+// Example using the fluent builder ([CollectionFindOneAndDelete]):
+//
+//	opts := options.CollectionFindOneAndDelete().SetSort(...)
+//
+// Example using a pointer to [CollectionFindOneAndDeleteOptions] without the fluent builder:
+//
+//	opts := &options.CollectionFindOneAndDeleteOptions{...}
+type CollectionFindOneAndDeleteOption = Builder[CollectionFindOneAndDeleteOptions]
+
+// Setters implements Builder[CollectionFindOneAndDeleteOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CollectionFindOneAndDeleteOptions].
+func (o *CollectionFindOneAndDeleteOptions) Setters() []func(*CollectionFindOneAndDeleteOptions) {
+	return NoopBuilder(o)
+}
+
+// Validate implements Validator for CollectionFindOneAndDeleteOptions.
+func (o *CollectionFindOneAndDeleteOptions) Validate() error { return nil }
+
+// collectionFindOneAndDeleteOptionsBuilder is a builder for CollectionFindOneAndDeleteOptions.
+type collectionFindOneAndDeleteOptionsBuilder struct {
+	setters []func(*CollectionFindOneAndDeleteOptions)
+}
+
+// CollectionFindOneAndDelete creates a new builder for [CollectionFindOneAndDeleteOptions].
+func CollectionFindOneAndDelete() *collectionFindOneAndDeleteOptionsBuilder {
+	return &collectionFindOneAndDeleteOptionsBuilder{}
+}
+
+// Setters implements Builder[CollectionFindOneAndDeleteOptions].
+func (b *collectionFindOneAndDeleteOptionsBuilder) Setters() []func(*CollectionFindOneAndDeleteOptions) {
+	return b.setters
+}
+
+// SetSort sets the Sort option.
+// Sort specifies the sort order to apply before selecting the document to delete.
+func (b *collectionFindOneAndDeleteOptionsBuilder) SetSort(v sort.Sortable) *collectionFindOneAndDeleteOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndDeleteOptions) { o.Sort = v })
+	return b
+}
+
+// SetProjection sets the Projection option.
+// Projection controls which fields are included or excluded in the returned document.
+func (b *collectionFindOneAndDeleteOptionsBuilder) SetProjection(v map[string]any) *collectionFindOneAndDeleteOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndDeleteOptions) { o.Projection = v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionFindOneAndDeleteOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionFindOneAndDeleteOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndDeleteOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
+// CollectionFindOneAndReplaceOption configures a CollectionFindOneAndReplace operation.
+// You can use the fluent-style builder or a pointer to [CollectionFindOneAndReplaceOptions] interchangeably.
+//
+// Example using the fluent builder ([CollectionFindOneAndReplace]):
+//
+//	// No need to use pointer for builder; the builder handles that for you.
+//	opts := options.CollectionFindOneAndReplace().SetUpsert(false)
+//
+// Example using a pointer to [CollectionFindOneAndReplaceOptions] without the fluent builder:
+//
+//	opts := &options.CollectionFindOneAndReplaceOptions{Upsert: ptr.To(false)}
+type CollectionFindOneAndReplaceOption = Builder[CollectionFindOneAndReplaceOptions]
+
+// Setters implements Builder[CollectionFindOneAndReplaceOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CollectionFindOneAndReplaceOptions].
+func (o *CollectionFindOneAndReplaceOptions) Setters() []func(*CollectionFindOneAndReplaceOptions) {
+	return NoopBuilder(o)
+}
+
+// Validate implements Validator for CollectionFindOneAndReplaceOptions.
+func (o *CollectionFindOneAndReplaceOptions) Validate() error { return nil }
+
+// collectionFindOneAndReplaceOptionsBuilder is a builder for CollectionFindOneAndReplaceOptions.
+type collectionFindOneAndReplaceOptionsBuilder struct {
+	setters []func(*CollectionFindOneAndReplaceOptions)
+}
+
+// CollectionFindOneAndReplace creates a new builder for [CollectionFindOneAndReplaceOptions].
+func CollectionFindOneAndReplace() *collectionFindOneAndReplaceOptionsBuilder {
+	return &collectionFindOneAndReplaceOptionsBuilder{}
+}
+
+// Setters implements Builder[CollectionFindOneAndReplaceOptions].
+func (b *collectionFindOneAndReplaceOptionsBuilder) Setters() []func(*CollectionFindOneAndReplaceOptions) {
+	return b.setters
+}
+
+// SetSort sets the Sort option.
+// Sort specifies the sort order to apply before selecting the document to replace.
+func (b *collectionFindOneAndReplaceOptionsBuilder) SetSort(v sort.Sortable) *collectionFindOneAndReplaceOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndReplaceOptions) { o.Sort = v })
+	return b
+}
+
+// SetProjection sets the Projection option.
+// Projection controls which fields are included or excluded in the returned document.
+func (b *collectionFindOneAndReplaceOptionsBuilder) SetProjection(v map[string]any) *collectionFindOneAndReplaceOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndReplaceOptions) { o.Projection = v })
+	return b
+}
+
+// SetUpsert sets the Upsert option.
+// Upsert if true, inserts a new document if no document matches the filter.
+func (b *collectionFindOneAndReplaceOptionsBuilder) SetUpsert(v bool) *collectionFindOneAndReplaceOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndReplaceOptions) { o.Upsert = &v })
+	return b
+}
+
+// SetReturnDocument sets the ReturnDocument option.
+// ReturnDocument specifies whether to return the document before or after the replacement.
+func (b *collectionFindOneAndReplaceOptionsBuilder) SetReturnDocument(v ReturnDocument) *collectionFindOneAndReplaceOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndReplaceOptions) { o.ReturnDocument = &v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionFindOneAndReplaceOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionFindOneAndReplaceOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionFindOneAndReplaceOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
 // CollectionFindOneAndUpdateOption configures a CollectionFindOneAndUpdate operation.
 // You can use the fluent-style builder or a pointer to [CollectionFindOneAndUpdateOptions] interchangeably.
 //
@@ -513,6 +648,127 @@ func (b *collectionFindOptionsBuilder) SetInitialPageState(v string) *collection
 // for this command. These are merged into the Client→DB→Collection→Command hierarchy.
 func (b *collectionFindOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionFindOptionsBuilder {
 	b.setters = append(b.setters, func(o *CollectionFindOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
+// CollectionInsertManyOption configures a CollectionInsertMany operation.
+// You can use the fluent-style builder or a pointer to [CollectionInsertManyOptions] interchangeably.
+//
+// Example using the fluent builder ([CollectionInsertMany]):
+//
+//	// No need to use pointer for builder; the builder handles that for you.
+//	opts := options.CollectionInsertMany().SetOrdered(false)
+//
+// Example using a pointer to [CollectionInsertManyOptions] without the fluent builder:
+//
+//	opts := &options.CollectionInsertManyOptions{Ordered: ptr.To(false)}
+type CollectionInsertManyOption = Builder[CollectionInsertManyOptions]
+
+// Setters implements Builder[CollectionInsertManyOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CollectionInsertManyOptions].
+func (o *CollectionInsertManyOptions) Setters() []func(*CollectionInsertManyOptions) {
+	return NoopBuilder(o)
+}
+
+// collectionInsertManyOptionsBuilder is a builder for CollectionInsertManyOptions.
+type collectionInsertManyOptionsBuilder struct {
+	setters []func(*CollectionInsertManyOptions)
+}
+
+// CollectionInsertMany creates a new builder for [CollectionInsertManyOptions].
+func CollectionInsertMany() *collectionInsertManyOptionsBuilder {
+	return &collectionInsertManyOptionsBuilder{}
+}
+
+// Setters implements Builder[CollectionInsertManyOptions].
+func (b *collectionInsertManyOptionsBuilder) Setters() []func(*CollectionInsertManyOptions) {
+	return b.setters
+}
+
+// SetOrdered sets the Ordered option.
+func (b *collectionInsertManyOptionsBuilder) SetOrdered(v bool) *collectionInsertManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionInsertManyOptions) { o.Ordered = &v })
+	return b
+}
+
+// SetChunkSize sets the ChunkSize option.
+func (b *collectionInsertManyOptionsBuilder) SetChunkSize(v int) *collectionInsertManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionInsertManyOptions) { o.ChunkSize = &v })
+	return b
+}
+
+// SetConcurrency sets the Concurrency option.
+func (b *collectionInsertManyOptionsBuilder) SetConcurrency(v int) *collectionInsertManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionInsertManyOptions) { o.Concurrency = &v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+func (b *collectionInsertManyOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionInsertManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionInsertManyOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
+// CollectionReplaceOneOption configures a CollectionReplaceOne operation.
+// You can use the fluent-style builder or a pointer to [CollectionReplaceOneOptions] interchangeably.
+//
+// Example using the fluent builder ([CollectionReplaceOne]):
+//
+//	// No need to use pointer for builder; the builder handles that for you.
+//	opts := options.CollectionReplaceOne().SetUpsert(false)
+//
+// Example using a pointer to [CollectionReplaceOneOptions] without the fluent builder:
+//
+//	opts := &options.CollectionReplaceOneOptions{Upsert: ptr.To(false)}
+type CollectionReplaceOneOption = Builder[CollectionReplaceOneOptions]
+
+// Setters implements Builder[CollectionReplaceOneOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[CollectionReplaceOneOptions].
+func (o *CollectionReplaceOneOptions) Setters() []func(*CollectionReplaceOneOptions) {
+	return NoopBuilder(o)
+}
+
+// Validate implements Validator for CollectionReplaceOneOptions.
+func (o *CollectionReplaceOneOptions) Validate() error { return nil }
+
+// collectionReplaceOneOptionsBuilder is a builder for CollectionReplaceOneOptions.
+type collectionReplaceOneOptionsBuilder struct {
+	setters []func(*CollectionReplaceOneOptions)
+}
+
+// CollectionReplaceOne creates a new builder for [CollectionReplaceOneOptions].
+func CollectionReplaceOne() *collectionReplaceOneOptionsBuilder {
+	return &collectionReplaceOneOptionsBuilder{}
+}
+
+// Setters implements Builder[CollectionReplaceOneOptions].
+func (b *collectionReplaceOneOptionsBuilder) Setters() []func(*CollectionReplaceOneOptions) {
+	return b.setters
+}
+
+// SetSort sets the Sort option.
+// Sort specifies the sort order to apply before selecting the document to replace.
+func (b *collectionReplaceOneOptionsBuilder) SetSort(v sort.Sortable) *collectionReplaceOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionReplaceOneOptions) { o.Sort = v })
+	return b
+}
+
+// SetUpsert sets the Upsert option.
+// Upsert if true, inserts a new document if no document matches the filter.
+func (b *collectionReplaceOneOptionsBuilder) SetUpsert(v bool) *collectionReplaceOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionReplaceOneOptions) { o.Upsert = &v })
+	return b
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Collection→Command hierarchy.
+func (b *collectionReplaceOneOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *collectionReplaceOneOptionsBuilder {
+	b.setters = append(b.setters, func(o *CollectionReplaceOneOptions) {
 		o.APIOptions = Merge(v...)
 	})
 	return b

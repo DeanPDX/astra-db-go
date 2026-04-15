@@ -49,6 +49,26 @@ func (o *CollectionDeleteOneOptions) Children() []Validator {
 	return children
 }
 
+// Children implements ChildValidator for CollectionFindOneAndDeleteOptions.
+// Returns all non-nil Validator fields.
+func (o *CollectionFindOneAndDeleteOptions) Children() []Validator {
+	var children []Validator
+	if o.APIOptions != nil {
+		children = append(children, o.APIOptions)
+	}
+	return children
+}
+
+// Children implements ChildValidator for CollectionFindOneAndReplaceOptions.
+// Returns all non-nil Validator fields.
+func (o *CollectionFindOneAndReplaceOptions) Children() []Validator {
+	var children []Validator
+	if o.APIOptions != nil {
+		children = append(children, o.APIOptions)
+	}
+	return children
+}
+
 // Children implements ChildValidator for CollectionFindOneAndUpdateOptions.
 // Returns all non-nil Validator fields.
 func (o *CollectionFindOneAndUpdateOptions) Children() []Validator {
@@ -72,6 +92,26 @@ func (o *CollectionFindOneOptions) Children() []Validator {
 // Children implements ChildValidator for CollectionFindOptions.
 // Returns all non-nil Validator fields.
 func (o *CollectionFindOptions) Children() []Validator {
+	var children []Validator
+	if o.APIOptions != nil {
+		children = append(children, o.APIOptions)
+	}
+	return children
+}
+
+// Children implements ChildValidator for CollectionInsertManyOptions.
+// Returns all non-nil Validator fields.
+func (o *CollectionInsertManyOptions) Children() []Validator {
+	var children []Validator
+	if o.APIOptions != nil {
+		children = append(children, o.APIOptions)
+	}
+	return children
+}
+
+// Children implements ChildValidator for CollectionReplaceOneOptions.
+// Returns all non-nil Validator fields.
+func (o *CollectionReplaceOneOptions) Children() []Validator {
 	var children []Validator
 	if o.APIOptions != nil {
 		children = append(children, o.APIOptions)
