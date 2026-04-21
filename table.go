@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/datastax/astra-db-go/cursor"
+	"github.com/datastax/astra-db-go/cursors"
 	"github.com/datastax/astra-db-go/filter"
 	"github.com/datastax/astra-db-go/options"
 	"github.com/datastax/astra-db-go/ptr"
@@ -27,6 +27,20 @@ import (
 	"github.com/datastax/astra-db-go/sort"
 	"github.com/datastax/astra-db-go/table"
 )
+
+// TableFilter is implemented by [filter.F] and [filter.Filter].
+// See the [filter package] for more details.
+//
+// Example composing Filters:
+//
+//	f := filter.Gt("num_pages", 300)
+//
+// Example using filter.F:
+//
+//	f := filter.F{"num_pages": filter.F{"$gt": 300}}
+//
+// [filter package]: https://pkg.go.dev/github.com/datastax/astra-db-go/filter
+type TableFilter = filter.Filterable
 
 // Table represents a table in the Astra DB.
 //
@@ -214,10 +228,10 @@ func dropTableIndexCommand(d *Db, name string) command {
 
 // tableFindPayload is the payload for the find command on tables
 type tableFindPayload struct {
-	Filter     any             `json:"filter,omitempty"`
-	Sort       sort.Sortable   `json:"sort,omitempty"`
-	Projection map[string]bool `json:"projection,omitempty"`
-	Options    *tableFindOpts  `json:"options,omitempty"`
+	Filter     any            `json:"filter,omitempty"`
+	Sort       sort.Sortable  `json:"sort,omitempty"`
+	Projection map[string]any `json:"projection,omitempty"`
+	Options    *tableFindOpts `json:"options,omitempty"`
 }
 
 // tableFindOpts represents the options sub-object in find payload
@@ -247,8 +261,8 @@ type tableFindResponse struct {
 //
 // Example using Next/Decode pattern:
 //
-//	cursor := tbl.Find(ctx, filter.Eq("is_checked_out", false))
-//	defer cursor.Close(ctx)
+//	cursor := tbl.Find(filter.Eq("is_checked_out", false))
+//	defer cursor.Close()
 //
 //	for cursor.Next(ctx) {
 //	    var row MyRow
@@ -263,86 +277,31 @@ type tableFindResponse struct {
 //
 // Example getting all results at once:
 //
-//	cursor := tbl.Find(ctx, filter.F{})
+//	cursor := tbl.Find(filter.F{})
 //	var rows []MyRow
-//	if err := cursor.All(ctx, &rows); err != nil {
+//	if err := cursor.DecodeAll(ctx, &rows); err != nil {
 //	    return err
 //	}
 //
 // Example with vector search:
 //
-//	cursor := tbl.Find(ctx, filter.F{},
+//	cursor := tbl.Find(filter.F{},
 //	    options.TableFind().
 //	        SetSort(sort.Vector([]float32{0.1, 0.2, 0.3})).
 //	        SetIncludeSimilarity(true),
 //	)
-func (t *Table) Find(ctx context.Context, f any, opts ...options.TableFindOption) *cursor.Cursor {
-	// Validate filter type
-	switch f.(type) {
-	case filter.F, filter.Filter, map[string]any, nil:
-		// Allowed filter types
-	default:
-		return cursor.NewWithError(fmt.Errorf("invalid filter type: %T", f))
+//
+// In the unlikely case of an option validation error while creating the cursor,
+// the cursor will be returned in an unclearable errored state.
+func (t *Table) Find(f TableFilter, opts ...options.TableFindOption) *cursors.TableFindCursor {
+	merged, err := options.MergeAndValidate(opts...)
+
+	fetcher := func(ctx context.Context, payload any, opts *options.APIOptions) ([]byte, results.Warnings, error) {
+		cmd := t.newCmdOverride("find", payload, merged.APIOptions)
+		return cmd.Execute(ctx)
 	}
 
-	// Build the find options once (they don't change between pages)
-	findOpts, err := options.MergeAndValidate(opts...)
-	if err != nil {
-		return cursor.NewWithError(fmt.Errorf("invalid options: %w", err))
-	}
-
-	// Create a page fetcher that captures the table, filter, and options
-	fetcher := func(fetchCtx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
-		payload := tableFindPayload{
-			Filter:     f,
-			Sort:       findOpts.Sort,
-			Projection: findOpts.Projection,
-		}
-
-		// Build options - use provided pageState for pagination
-		payloadOpts := &tableFindOpts{}
-		hasOpts := false
-
-		if findOpts.Limit != nil {
-			payloadOpts.Limit = findOpts.Limit
-			hasOpts = true
-		}
-		if findOpts.Skip != nil {
-			payloadOpts.Skip = findOpts.Skip
-			hasOpts = true
-		}
-		if findOpts.IncludeSimilarity != nil {
-			payloadOpts.IncludeSimilarity = findOpts.IncludeSimilarity
-			hasOpts = true
-		}
-		if pageState != nil {
-			payloadOpts.PageState = pageState
-			hasOpts = true
-		} else if findOpts.InitialPageState != nil {
-			// Only use InitialPageState for the first request
-			payloadOpts.PageState = findOpts.InitialPageState
-			hasOpts = true
-		}
-
-		if hasOpts {
-			payload.Options = payloadOpts
-		}
-
-		cmd := t.newCmdOverride("find", payload, findOpts.APIOptions)
-		b, warnings, err := cmd.Execute(fetchCtx)
-		if err != nil {
-			return nil, nil, warnings, err
-		}
-
-		var resp tableFindResponse
-		if err := json.Unmarshal(b, &resp); err != nil {
-			return nil, nil, warnings, err
-		}
-
-		return resp.Data.Documents, resp.Data.NextPageState, warnings, nil
-	}
-
-	return cursor.New(fetcher)
+	return cursors.NewTableFindCursor(f, merged, fetcher, err)
 }
 
 // FindOne finds a single row in a table matching the filter criteria.
@@ -358,7 +317,7 @@ func (t *Table) FindOne(ctx context.Context, f any, opts ...options.TableFindOpt
 	case filter.F, filter.Filter, map[string]any, nil:
 		// Allowed filter types
 	default:
-		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %T", f))
+		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %Raw", f))
 	}
 
 	// Build the find options
@@ -607,7 +566,7 @@ func validateIndexColumn(column any) error {
 			return fmt.Errorf("index column map cannot be empty")
 		}
 	default:
-		return fmt.Errorf("invalid index column type: %T", column)
+		return fmt.Errorf("invalid index column type: %Raw", column)
 	}
 	// All good.
 	return nil

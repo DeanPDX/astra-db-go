@@ -1781,7 +1781,7 @@ func (b *tableFindOptionsBuilder) SetSort(v sort.Sortable) *tableFindOptionsBuil
 // SetProjection sets the Projection option.
 // Projection controls which columns are included or excluded in the returned rows
 // Use true to include a column, false to exclude it
-func (b *tableFindOptionsBuilder) SetProjection(v map[string]bool) *tableFindOptionsBuilder {
+func (b *tableFindOptionsBuilder) SetProjection(v map[string]any) *tableFindOptionsBuilder {
 	b.setters = append(b.setters, func(o *TableFindOptions) { o.Projection = v })
 	return b
 }
@@ -1806,6 +1806,14 @@ func (b *tableFindOptionsBuilder) SetSkip(v int) *tableFindOptionsBuilder {
 // for vector searches. Only works with direct vector search, not vectorize.
 func (b *tableFindOptionsBuilder) SetIncludeSimilarity(v bool) *tableFindOptionsBuilder {
 	b.setters = append(b.setters, func(o *TableFindOptions) { o.IncludeSimilarity = &v })
+	return b
+}
+
+// SetIncludeSortVector sets the IncludeSortVector option.
+// IncludeSortVector if true, includes the sort vector in the response.
+// Useful for vector searches using $vectorize.
+func (b *tableFindOptionsBuilder) SetIncludeSortVector(v bool) *tableFindOptionsBuilder {
+	b.setters = append(b.setters, func(o *TableFindOptions) { o.IncludeSortVector = &v })
 	return b
 }
 

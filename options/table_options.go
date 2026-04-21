@@ -37,7 +37,7 @@ type TableFindOptions struct {
 
 	// Projection controls which columns are included or excluded in the returned rows
 	// Use true to include a column, false to exclude it
-	Projection map[string]bool `json:"projection,omitempty"`
+	Projection map[string]any `json:"projection,omitempty"`
 
 	// Limit limits the total number of rows returned
 	Limit *int `json:"limit,omitempty"`
@@ -49,6 +49,10 @@ type TableFindOptions struct {
 	// IncludeSimilarity if true, includes a $similarity property in the response
 	// for vector searches. Only works with direct vector search, not vectorize.
 	IncludeSimilarity *bool `json:"includeSimilarity,omitempty"`
+
+	// IncludeSortVector if true, includes the sort vector in the response.
+	// Useful for vector searches using $vectorize.
+	IncludeSortVector *bool `json:"includeSortVector,omitempty"`
 
 	// InitialPageState is used for pagination to fetch the next page of results
 	InitialPageState *string `json:"pageState,omitempty"`
