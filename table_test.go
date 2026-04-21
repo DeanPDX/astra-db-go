@@ -35,8 +35,8 @@ func TestCreateTablePayloadMarshal(t *testing.T) {
 			payload: createTablePayload{
 				Name: "test_table",
 				Definition: table.Definition{
-					Columns: map[string]table.Column{
-						"title": table.Text(),
+					Columns: table.Columns{
+						{Name: "title", Column: table.Text()},
 					},
 					PrimaryKey: table.PrimaryKey{
 						PartitionBy: []string{"title"},
@@ -50,30 +50,33 @@ func TestCreateTablePayloadMarshal(t *testing.T) {
 			payload: createTablePayload{
 				Name: "test_table",
 				Definition: table.Definition{
-					Columns: map[string]table.Column{
-						"title":  table.Text(),
-						"rating": table.Float(),
+					Columns: table.Columns{
+						{Name: "title", Column: table.Text()},
+						{Name: "rating", Column: table.Float()},
 					},
 					PrimaryKey: table.PrimaryKey{
 						PartitionBy: []string{"title", "rating"},
 					},
 				},
 			},
-			expected: `{"name":"test_table","definition":{"columns":{"rating":{"type":"float"},"title":{"type":"text"}},"primaryKey":{"partitionBy":["title","rating"]}}}`,
+			expected: `{"name":"test_table","definition":{"columns":{"title":{"type":"text"},"rating":{"type":"float"}},"primaryKey":{"partitionBy":["title","rating"]}}}`,
 		},
 		{
 			name: "compound primary key with clustering",
 			payload: createTablePayload{
 				Name: "test_table",
 				Definition: table.Definition{
-					Columns: map[string]table.Column{
-						"title":           table.Text(),
-						"rating":          table.Float(),
-						"number_of_pages": table.Int(),
+					Columns: table.Columns{
+						{Name: "title", Column: table.Text()},
+						{Name: "rating", Column: table.Float()},
+						{Name: "number_of_pages", Column: table.Int()},
 					},
 					PrimaryKey: table.PrimaryKey{
-						PartitionBy:   []string{"title"},
-						PartitionSort: map[string]int{"rating": table.SortAscending, "number_of_pages": table.SortDescending},
+						PartitionBy: []string{"title"},
+						PartitionSort: table.PartitionSort{
+							{Name: "rating", Order: table.SortAscending},
+							{Name: "number_of_pages", Order: table.SortDescending},
+						},
 					},
 				},
 			},
@@ -83,8 +86,8 @@ func TestCreateTablePayloadMarshal(t *testing.T) {
 			payload: createTablePayload{
 				Name: "test_table",
 				Definition: table.Definition{
-					Columns: map[string]table.Column{
-						"id": table.UUID(),
+					Columns: table.Columns{
+						{Name: "id", Column: table.UUID()},
 					},
 					PrimaryKey: table.PrimaryKey{
 						PartitionBy: []string{"id"},
@@ -305,7 +308,7 @@ func TestPrimaryKeyUnmarshal(t *testing.T) {
 			input: `{"partitionBy":["title"],"partitionSort":{"rating":1}}`,
 			expected: table.PrimaryKey{
 				PartitionBy:   []string{"title"},
-				PartitionSort: map[string]int{"rating": 1},
+				PartitionSort: table.PartitionSort{{Name: "rating", Order: 1}},
 			},
 		},
 	}
