@@ -1731,6 +1731,52 @@ func (b *serdesOptionsBuilder) Setters() []func(*SerdesOptions) {
 	return b.setters
 }
 
+// TableDeleteManyOption configures a TableDeleteMany operation.
+// You can use the fluent-style builder or a pointer to [TableDeleteManyOptions] interchangeably.
+//
+// Example using the fluent builder ([TableDeleteMany]):
+//
+//	opts := options.TableDeleteMany().SetAPIOptions(...)
+//
+// Example using a pointer to [TableDeleteManyOptions] without the fluent builder:
+//
+//	opts := &options.TableDeleteManyOptions{...}
+type TableDeleteManyOption = Builder[TableDeleteManyOptions]
+
+// Setters implements Builder[TableDeleteManyOptions] allowing the raw struct to be
+// passed directly to methods that accept ...Builder[TableDeleteManyOptions].
+func (o *TableDeleteManyOptions) Setters() []func(*TableDeleteManyOptions) {
+	return NoopBuilder(o)
+}
+
+// Validate implements Validator for TableDeleteManyOptions.
+func (o *TableDeleteManyOptions) Validate() error { return nil }
+
+// tableDeleteManyOptionsBuilder is a builder for TableDeleteManyOptions.
+type tableDeleteManyOptionsBuilder struct {
+	setters []func(*TableDeleteManyOptions)
+}
+
+// TableDeleteMany creates a new builder for [TableDeleteManyOptions].
+func TableDeleteMany() *tableDeleteManyOptionsBuilder {
+	return &tableDeleteManyOptionsBuilder{}
+}
+
+// Setters implements Builder[TableDeleteManyOptions].
+func (b *tableDeleteManyOptionsBuilder) Setters() []func(*TableDeleteManyOptions) {
+	return b.setters
+}
+
+// SetAPIOptions sets the APIOptions option.
+// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+// for this command. These are merged into the Client→DB→Table→Command hierarchy.
+func (b *tableDeleteManyOptionsBuilder) SetAPIOptions(v ...Builder[APIOptions]) *tableDeleteManyOptionsBuilder {
+	b.setters = append(b.setters, func(o *TableDeleteManyOptions) {
+		o.APIOptions = Merge(v...)
+	})
+	return b
+}
+
 // TableDeleteOneOption configures a TableDeleteOne operation.
 // You can use the fluent-style builder or a pointer to [TableDeleteOneOptions] interchangeably.
 //

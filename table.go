@@ -515,6 +515,43 @@ func (t *Table) DeleteOne(ctx context.Context, f TableFilter, opts ...options.Ta
 	return err
 }
 
+// tableDeleteManyPayload is the payload for the deleteMany command on tables.
+type tableDeleteManyPayload struct {
+	Filter TableFilter `json:"filter,omitempty"`
+}
+
+// DeleteMany deletes all rows in the table matching the filter.
+//
+// The filter must reference only primary-key columns per the Data API rules
+// for table deleteMany. An empty filter (filter.F{}) deletes every row in the
+// table; a nil filter is rejected to avoid accidental total deletes.
+//
+// The Data API always returns deletedCount = -1 for this command, so no count
+// is surfaced to the caller; the method returns only an error.
+//
+// Options passed here override those set on the table.
+//
+// Example:
+//
+//	err := tbl.DeleteMany(ctx,
+//		filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+//	)
+func (t *Table) DeleteMany(ctx context.Context, f TableFilter, opts ...options.TableDeleteManyOption) error {
+	deleteOpts, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return fmt.Errorf("invalid options: %w", err)
+	}
+	if f == nil {
+		// Force the user to pass empty filter to avoid accidental delete all.
+		return ErrNilFilter
+	}
+	cmd := t.newCmdWithMergedOptions("deleteMany", tableDeleteManyPayload{
+		Filter: f,
+	}, deleteOpts.APIOptions)
+	_, _, err = cmd.Execute(ctx)
+	return err
+}
+
 // createIndexPayload is the payload for the createIndex command
 type createIndexPayload struct {
 	Name       string                `json:"name"`

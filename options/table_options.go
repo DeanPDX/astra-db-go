@@ -83,3 +83,12 @@ type TableDeleteOneOptions struct {
 	// for this command. These are merged into the Client→DB→Table→Command hierarchy.
 	APIOptions *APIOptions `json:"-"`
 }
+
+// TableDeleteManyOptions represents options for deleting multiple rows in a table.
+// Right now this is empty except for APIOptions; table deleteMany has no
+// pagination currently, etc.
+type TableDeleteManyOptions struct {
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Table→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
