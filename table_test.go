@@ -1553,17 +1553,15 @@ const exampleDeleteManyPayloadJSON = `{
 // matches docs example.
 func TestTableDeleteMany_CommandMarshal(t *testing.T) {
 	tbl := getTestTable(t)
-	tests := []testutils.JSONTestCase{
-		{
-			Name:     "Composite primary key: title + author",
-			Expected: exampleDeleteManyPayloadJSON,
-			Args: []any{
-				tbl.newCmd("deleteMany", tableDeleteManyPayload{
-					Filter: filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
-				}),
-			},
+	tests := []testutils.JSONTestCase{{
+		Name:     "Composite primary key: title + author",
+		Expected: exampleDeleteManyPayloadJSON,
+		Args: []any{
+			tbl.newCmd("deleteMany", tableDeleteManyPayload{
+				Filter: filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+			}),
 		},
-	}
+	}}
 	testutils.RunJSONTestCases(t, tests)
 }
 
