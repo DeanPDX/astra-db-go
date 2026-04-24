@@ -367,6 +367,9 @@ func CollectionCursorPagination(e *harness.TestEnv) error {
 
 		// Check if we just finished a page (remaining batch length is 0 and there's a next page)
 		if cursor.Buffered() == 0 {
+			// TODO: it appears this is not working. Run integration tests and you will see that this
+			// is never in the log and we DO get a warn that pagination might not have been tested from
+			// line 394.
 			slog.Info("Fetched page",
 				"pageNumber", pagesFetched+1,
 				"docsInPage", docsInCurrentPage,

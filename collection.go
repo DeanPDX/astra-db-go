@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/datastax/astra-db-go/cursors"
-	"github.com/datastax/astra-db-go/datatypes"
 	"github.com/datastax/astra-db-go/filter"
 	"github.com/datastax/astra-db-go/options"
 	"github.com/datastax/astra-db-go/ptr"
@@ -162,8 +161,17 @@ func (c *Collection) InsertMany(ctx context.Context, documents any, opts ...opti
 	return insertMany(ctx, documents, c.newCmdWithMergedOptions, insertManyOptions(*merged))
 }
 
-type filterWrapper struct {
-	Filters CollectionFilter `json:"filter,omitempty"`
+// Payload for collection find one.
+type collectionFindOnePayload struct {
+	Filter     CollectionFilter          `json:"filter,omitempty"`
+	Sort       sort.Sortable             `json:"sort,omitempty"`
+	Projection map[string]any            `json:"projection,omitempty"`
+	Options    *collectionFindOneOptions `json:"options,omitempty"`
+}
+
+// collectionFindOneOptions contains options for collection find one operations
+type collectionFindOneOptions struct {
+	IncludeSimilarity *bool `json:"includeSimilarity,omitempty"`
 }
 
 // FindOne finds a single document matching the filter.
@@ -174,35 +182,13 @@ func (c *Collection) FindOne(ctx context.Context, f CollectionFilter, opts ...op
 	if err != nil {
 		return results.NewSingleResult([]byte{}, nil, err)
 	}
-	cmd := c.newCmdWithMergedOptions("findOne", filterWrapper{Filters: f}, merged.APIOptions)
+	payload := collectionFindOnePayload{Filter: f, Sort: merged.Sort, Projection: merged.Projection}
+	if merged.IncludeSimilarity != nil {
+		payload.Options = &collectionFindOneOptions{IncludeSimilarity: merged.IncludeSimilarity}
+	}
+	cmd := c.newCmdWithMergedOptions("findOne", payload, merged.APIOptions)
 	b, warnings, err := cmd.Execute(ctx)
 	return results.NewSingleResult(b, warnings, err)
-}
-
-// collectionFindPayload is the payload for the find command on collections
-type collectionFindPayload struct {
-	Filter     CollectionFilter       `json:"filter,omitempty"`
-	Sort       sort.Sortable          `json:"sort,omitempty"`
-	Projection map[string]any         `json:"projection,omitempty"`
-	Options    *collectionFindOptions `json:"options,omitempty"`
-}
-
-// collectionFindOptions contains options for collection find operations
-type collectionFindOptions struct {
-	Limit             *int    `json:"limit,omitempty"`
-	Skip              *int    `json:"skip,omitempty"`
-	IncludeSimilarity *bool   `json:"includeSimilarity,omitempty"`
-	IncludeSortVector *bool   `json:"includeSortVector,omitempty"`
-	PageState         *string `json:"pageState,omitempty"`
-}
-
-// collectionFindResponse is the response from the find command
-type collectionFindResponse struct {
-	Data struct {
-		Documents     []json.RawMessage        `json:"documents"`
-		NextPageState *string                  `json:"nextPageState"`
-		SortVector    *datatypes.DataAPIVector `json:"sortVector,omitempty"`
-	} `json:"data"`
 }
 
 // Find returns a cursor for iterating over documents matching the filter.
@@ -668,6 +654,11 @@ func (c *Collection) FindOneAndDelete(ctx context.Context, f CollectionFilter, o
 	return results.NewSingleResult(b, warnings, err)
 }
 
+// Payload for collection countDocuments.
+type collectionCountPayload struct {
+	Filter CollectionFilter `json:"filter,omitempty"`
+}
+
 type collectionCountResponse struct {
 	Status struct {
 		Count    int  `json:"count"`
@@ -680,7 +671,7 @@ type collectionCountResponse struct {
 //
 // Options passed here override those set on the collection.
 func (c *Collection) CountDocuments(ctx context.Context, f CollectionFilter, upperBound int, opts ...options.APIOption) (int, error) {
-	cmd := c.newCmd("countDocuments", filterWrapper{Filters: f}, opts...)
+	cmd := c.newCmd("countDocuments", collectionCountPayload{Filter: f}, opts...)
 	b, _, err := cmd.Execute(ctx)
 	if err != nil {
 		return 0, err
