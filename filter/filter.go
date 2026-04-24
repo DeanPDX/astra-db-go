@@ -85,6 +85,8 @@ const (
 	OpExists           FilterOperator = "$exists"
 	OpAll              FilterOperator = "$all"
 	OpSize             FilterOperator = "$size"
+	OpLexical          FilterOperator = "$lexical"
+	OpMatch            FilterOperator = "$match"
 )
 
 // Filter represents a collection of filters. Compose filters with
@@ -180,4 +182,17 @@ func Or(children ...Filter) Filter {
 
 func Not(child Filter) Filter {
 	return Filter{op: OpNot, children: []Filter{child}}
+}
+
+// LexicalMatch creates a filter that matches documents against the collection's
+// reserved $lexical field. Lexicographical matching is only available for
+// [collections with lexical enabled].
+//
+// Example usage:
+//
+//	filters := filter.LexicalMatch("tree hill")
+//
+// [collections with lexical enabled]: https://docs.datastax.com/en/astra-db-serverless/api-reference/collection-methods/create-collection.html#example-lexical
+func LexicalMatch(val string) Filter {
+	return fieldOp(OpMatch, string(OpLexical), val)
 }
