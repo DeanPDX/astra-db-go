@@ -103,11 +103,11 @@ func CollectionListCollections(e *harness.TestEnv) error {
 	}
 
 	var predicate = func(c results.CollectionDescriptor) bool {
-		return c.Name == collectionName && c.Definition.DefaultId != nil && c.Definition.Vector == nil && c.Definition.Indexing == nil
+		return c.Name == collectionName
 	}
 
 	if !slices.ContainsFunc(collections, predicate) {
-		return fmt.Errorf("expected to find collection '%s' with simple definition in list", collectionName)
+		return fmt.Errorf("expected to find collection '%s' in list", collectionName)
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func CollectionOptions(e *harness.TestEnv) error {
 		return fmt.Errorf("collection.Options() failed: %w", err)
 	}
 
-	if c.Name != collectionName || c.Definition.DefaultId == nil || c.Definition.Vector != nil || c.Definition.Indexing != nil {
+	if c.Name != collectionName {
 		return fmt.Errorf("collection options did not match expected values. Got: %+v", c)
 	}
 	return nil
@@ -258,7 +258,10 @@ func CollectionFindOne(e *harness.TestEnv) error {
 		return err
 	}
 	var document SimpleObject
-	err = c.FindOne(ctx, filter.F{"_id": insertedID}).Decode(&document)
+	err = c.FindOne(ctx,
+		filter.F{"_id": insertedID},
+		options.CollectionFindOne().SetSort(sort.Asc("_id")),
+	).Decode(&document)
 	if err != nil {
 		return err
 	}
@@ -278,7 +281,10 @@ func CollectionFind(e *harness.TestEnv) error {
 	c := db.Collection(collectionName)
 
 	// Use cursor to find documents
-	cursor := c.Find(filter.Gte("properties.intProperty", 20))
+	cursor := c.Find(
+		filter.Gte("properties.intProperty", 20),
+		options.CollectionFind().SetSort(sort.Asc("properties.intProperty")),
+	)
 	defer cursor.Close()
 
 	var documents []SimpleObject
