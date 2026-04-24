@@ -211,6 +211,45 @@ type listCollectionsResponse struct {
 	} `json:"status"`
 }
 
+// UnmarshalJSON implements custom unmarshaling to handle both the "explain=true"
+// response (where collections is an array of objects) and the "explain=false"
+// response (where collections is an array of strings).
+func (r *listCollectionsResponse) UnmarshalJSON(data []byte) error {
+	// Use an alias type to avoid infinite recursion (argh), and capture the inner
+	// collections field as raw JSON so we can decide how to decode it.
+	var raw struct {
+		Status struct {
+			Collections json.RawMessage `json:"collections"`
+		} `json:"status"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if len(raw.Status.Collections) == 0 {
+		// Nothing to do.
+		return nil
+	}
+
+	// First try the rich object form (explain=true).
+	var descriptors []results.CollectionDescriptor
+	if err := json.Unmarshal(raw.Status.Collections, &descriptors); err == nil {
+		r.Status.Collections = descriptors
+		return nil
+	}
+
+	// Fall back to the string-only form (explain=false).
+	var names []string
+	if err := json.Unmarshal(raw.Status.Collections, &names); err != nil {
+		return err
+	}
+	r.Status.Collections = make([]results.CollectionDescriptor, len(names))
+	for i, n := range names {
+		r.Status.Collections[i] = results.CollectionDescriptor{Name: n}
+	}
+	return nil
+}
+
 // listCollections is the internal helper for listing collections
 func listCollections(d *Db, ctx context.Context, explain bool, opts ...options.APIOption) ([]results.CollectionDescriptor, error) {
 	payload := map[string]any{

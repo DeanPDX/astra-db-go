@@ -104,3 +104,42 @@ func TestCreateCollectionCommand(t *testing.T) {
 		}
 	})
 }
+
+// NOTE: These were both pulled from log files from integration tests. Hence
+// the somewhat odd formatting (escaped quotes).
+
+// This is with explain = true.
+const listCollectionsExplainTrueResp = "{\"status\":{\"collections\":[{\"name\":\"GoTest\",\"options\":{\"lexical\":{\"enabled\":true,\"analyzer\":\"standard\"},\"rerank\":{\"enabled\":true,\"service\":{\"provider\":\"nvidia\",\"modelName\":\"nvidia/llama-3.2-nv-rerankqa-1b-v2\"}}}},{\"name\":\"quickstart_collection\",\"options\":{\"vector\":{\"dimension\":1024,\"metric\":\"cosine\",\"sourceModel\":\"other\",\"service\":{\"provider\":\"nvidia\",\"modelName\":\"nvidia/nv-embedqa-e5-v5\"}},\"lexical\":{\"enabled\":true,\"analyzer\":\"standard\"},\"rerank\":{\"enabled\":true,\"service\":{\"provider\":\"nvidia\",\"modelName\":\"nvidia/llama-3.2-nv-rerankqa-1b-v2\"}}}}]}}"
+
+// This is with explain = false.
+const listCollectionsExplainFalseResp = "{\"status\":{\"collections\":[\"GoTest\",\"quickstart_collection\"]}}"
+
+// TestListCollectionsUnmarshal verifies that both types of listCollection responses can
+// be properly json.Unmarshal'd into the internal listCollectionsResponse struct.
+func TestListCollectionsUnmarshal(t *testing.T) {
+	var tests = []struct {
+		name string
+		resp string
+	}{
+		{name: "explain=true response", resp: listCollectionsExplainTrueResp},
+		{name: "explain=false response", resp: listCollectionsExplainFalseResp},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var resp listCollectionsResponse
+			err := json.Unmarshal([]byte(tt.resp), &resp)
+			if err != nil {
+				t.Fatalf("Unmarshal: %v", err)
+			}
+			if len(resp.Status.Collections) != 2 {
+				t.Fatalf("expected 2 collections, got %d", len(resp.Status.Collections))
+			}
+			if resp.Status.Collections[0].Name != "GoTest" {
+				t.Errorf("expected first collection name 'GoTest', got '%s'", resp.Status.Collections[0].Name)
+			}
+			if resp.Status.Collections[1].Name != "quickstart_collection" {
+				t.Errorf("expected second collection name 'quickstart_collection', got '%s'", resp.Status.Collections[1].Name)
+			}
+		})
+	}
+}
