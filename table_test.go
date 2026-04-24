@@ -1534,3 +1534,79 @@ func TestTableDeleteOne_HappyPath(t *testing.T) {
 }
 
 // #endregion
+
+// #region Table.DeleteMany tests
+
+// From the docs:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/row-methods/delete-many.html#delete-a-row-by-primary-key
+// Order of filter keys changed to be alphanumeric.
+const exampleDeleteManyPayloadJSON = `{
+  "deleteMany": {
+    "filter": {
+      "author": "John Anthony",  
+	  "title": "Hidden Shadows of the Past"
+    }
+  }
+}`
+
+// TestTableDeleteMany_CommandMarshal verifies the deleteMany command payload
+// matches docs example.
+func TestTableDeleteMany_CommandMarshal(t *testing.T) {
+	tbl := getTestTable(t)
+	tests := []testutils.JSONTestCase{{
+		Name:     "Composite primary key: title + author",
+		Expected: exampleDeleteManyPayloadJSON,
+		Args: []any{
+			tbl.newCmd("deleteMany", tableDeleteManyPayload{
+				Filter: filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+			}),
+		},
+	}}
+	testutils.RunJSONTestCases(t, tests)
+}
+
+// TestTableDeleteMany_HappyPath verifies DeleteMany posts the expected request
+// body, handles the documented deletedCount=-1 response, and returns nil.
+func TestTableDeleteMany_HappyPath(t *testing.T) {
+	var gotBody atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		if r.Header.Get("Token") != "test-token" {
+			t.Errorf("expected token %q in request header, got %q", "test-token", r.Header.Get("Token"))
+		}
+		gotBody.Store(b)
+		w.Header().Set("Content-Type", "application/json")
+		// From the docs:
+		// > Always returns a status.deletedCount of -1, regardless of whether a row was found and deleted.
+		fmt.Fprint(w, `{"status":{"deletedCount":-1}}`)
+	}))
+	defer ts.Close()
+
+	tbl := httpTestTable(ts)
+	err := tbl.DeleteMany(context.Background(),
+		filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+		options.TableDeleteMany(), // Empty options just to throw a slight curveball.
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestTableDeleteMany_EnforceNonNilFilter ensures a nil filter is rejected.
+// Callers must pass filter.F{} explicitly to delete all rows so total-delete
+// is always intentional.
+func TestTableDeleteMany_EnforceNonNilFilter(t *testing.T) {
+	tbl := &Table{}
+	err := tbl.DeleteMany(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error when filter is nil, got nil")
+	}
+	if !errors.Is(err, ErrNilFilter) {
+		t.Errorf("expected ErrNilFilter, got: %v", err)
+	}
+}
+
+// #endregion
