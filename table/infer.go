@@ -190,7 +190,11 @@ func goTypeToColumn(t reflect.Type, info tagInfo) (Column, error) {
 
 	// Type override
 	if info.typeOverride != "" {
-		return resolveTypeOverride(t, info)
+		expr, err := parseTypeExpr(info.typeOverride)
+		if err != nil {
+			return Column{}, fmt.Errorf("type=%s: %w", info.typeOverride, err)
+		}
+		return resolveTypeExpr(expr, t, info)
 	}
 
 	// Standalone dim= implies vector
@@ -257,95 +261,98 @@ func goTypeToColumn(t reflect.Type, info tagInfo) (Column, error) {
 	}
 }
 
-// resolveTypeOverride creates a Column from an explicit type= override value.
-func resolveTypeOverride(t reflect.Type, info tagInfo) (Column, error) {
-	switch info.typeOverride {
-	case TypeText:
-		return Text(), nil
-	case TypeAscii:
-		return Ascii(), nil
-	case TypeInt:
-		return Int(), nil
-	case TypeBigInt:
-		return BigInt(), nil
-	case TypeSmallInt:
-		return SmallInt(), nil
-	case TypeTinyInt:
-		return TinyInt(), nil
-	case TypeFloat:
-		return Float(), nil
-	case TypeDouble:
-		return Double(), nil
-	case TypeDecimal:
-		return Decimal(), nil
-	case TypeBoolean:
-		return Boolean(), nil
-	case TypeDate:
-		return Date(), nil
-	case TypeTime:
-		return Time(), nil
-	case TypeTimestamp:
-		return Timestamp(), nil
-	case TypeUUID:
-		return UUID(), nil
-	case TypeTimeUUID:
-		return TimeUUID(), nil
-	case TypeBlob:
-		return Blob(), nil
-	case TypeVarint:
-		return Varint(), nil
-	case TypeInet:
-		return Inet(), nil
+// resolveTypeExpr walks a parsed typeExpr and produces a Column. It consults
+// goType only at "infer" leaves and at container boundaries where the Go
+// type's shape (slice / map) governs how values will be marshaled. For
+// container leaves declared explicitly (e.g. set[ascii]), the declared leaf
+// wins and the Go element type is not consulted — callers are trusted to
+// serialize values compatibly.
+func resolveTypeExpr(expr typeExpr, t reflect.Type, info tagInfo) (Column, error) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
+	switch expr.name {
+	case "infer":
+		return goTypeToColumn(t, tagInfo{})
+
+	case "udt":
+		if expr.udtName == "" {
+			return Column{}, fmt.Errorf("udt requires a name")
+		}
+		return UDT(expr.udtName), nil
+
+	case TypeSet:
+		if t.Kind() != reflect.Slice {
+			return Column{}, fmt.Errorf("type=set requires slice Go type, got %s", t)
+		}
+		elem, err := resolveTypeExpr(*expr.elem, t.Elem(), tagInfo{})
+		if err != nil {
+			return Column{}, fmt.Errorf("set element: %w", err)
+		}
+		return Set(elem), nil
+
+	case TypeList:
+		if t.Kind() != reflect.Slice {
+			return Column{}, fmt.Errorf("type=list requires slice Go type, got %s", t)
+		}
+		elem, err := resolveTypeExpr(*expr.elem, t.Elem(), tagInfo{})
+		if err != nil {
+			return Column{}, fmt.Errorf("list element: %w", err)
+		}
+		return List(elem), nil
+
+	case TypeMap:
+		if t.Kind() != reflect.Map {
+			return Column{}, fmt.Errorf("type=map requires map Go type, got %s", t)
+		}
+		keyCol, err := resolveTypeExpr(*expr.key, t.Key(), tagInfo{})
+		if err != nil {
+			return Column{}, fmt.Errorf("map key: %w", err)
+		}
+		valCol, err := resolveTypeExpr(*expr.elem, t.Elem(), tagInfo{})
+		if err != nil {
+			return Column{}, fmt.Errorf("map value: %w", err)
+		}
+		return Map(keyCol.Type, valCol), nil
+
 	case TypeVector:
 		if info.dimension <= 0 {
 			return Column{}, fmt.Errorf("type=vector requires dim=N")
 		}
 		return Vector(info.dimension), nil
-	case TypeSet:
-		for t.Kind() == reflect.Pointer {
-			t = t.Elem()
-		}
-		if t.Kind() != reflect.Slice {
-			return Column{}, fmt.Errorf("type=set requires slice Go type, got %s", t)
-		}
-		elem, err := goTypeToColumn(t.Elem(), tagInfo{})
-		if err != nil {
-			return Column{}, fmt.Errorf("set element: %w", err)
-		}
-		return Set(elem), nil
-	case TypeList:
-		for t.Kind() == reflect.Pointer {
-			t = t.Elem()
-		}
-		if t.Kind() != reflect.Slice {
-			return Column{}, fmt.Errorf("type=list requires slice Go type, got %s", t)
-		}
-		elem, err := goTypeToColumn(t.Elem(), tagInfo{})
-		if err != nil {
-			return Column{}, fmt.Errorf("list element: %w", err)
-		}
-		return List(elem), nil
-	case TypeMap:
-		for t.Kind() == reflect.Pointer {
-			t = t.Elem()
-		}
-		if t.Kind() != reflect.Map {
-			return Column{}, fmt.Errorf("type=map requires map Go type, got %s", t)
-		}
-		keyCol, err := goTypeToColumn(t.Key(), tagInfo{})
-		if err != nil {
-			return Column{}, fmt.Errorf("map key: %w", err)
-		}
-		valCol, err := goTypeToColumn(t.Elem(), tagInfo{})
-		if err != nil {
-			return Column{}, fmt.Errorf("map value: %w", err)
-		}
-		return Map(keyCol.Type, valCol), nil
-	case "duration":
-		return Column{Type: "duration"}, nil
+
 	default:
-		return Column{}, fmt.Errorf("unknown type override %q", info.typeOverride)
+		if factory, ok := scalarFactories[expr.name]; ok {
+			return factory(), nil
+		}
+		return Column{}, fmt.Errorf("unknown type override %q", expr.name)
 	}
+}
+
+// scalarFactories maps a scalar type name to the Column factory that produces
+// the corresponding column. Vector and the container types are handled
+// directly in resolveTypeExpr because they need extra inputs.
+var scalarFactories = map[string]func() Column{
+	TypeText:      Text,
+	TypeAscii:     Ascii,
+	TypeInt:       Int,
+	TypeBigInt:    BigInt,
+	TypeSmallInt:  SmallInt,
+	TypeTinyInt:   TinyInt,
+	TypeFloat:     Float,
+	TypeDouble:    Double,
+	TypeDecimal:   Decimal,
+	TypeBoolean:   Boolean,
+	TypeDate:      Date,
+	TypeTime:      Time,
+	TypeTimestamp: Timestamp,
+	TypeUUID:      UUID,
+	TypeTimeUUID:  TimeUUID,
+	TypeBlob:      Blob,
+	TypeVarint:    Varint,
+	TypeInet:      Inet,
+	TypeDuration:  Duration,
 }
 
 // keyField is used during primary key assembly.
@@ -438,6 +445,18 @@ func validateOrdinals(label string, keys []keyField) error {
 //   - astra:"type=<T>" — override inferred column type
 //   - astra:"dim=<N>" — vector dimension
 //   - astra:"vectorize,provider=<P>,model=<M>" — vectorize service
+//
+// The <T> in type= supports:
+//   - scalars: text, ascii, int, bigint, smallint, tinyint, float, double,
+//     decimal, boolean, date, time, timestamp, uuid, timeuuid, blob, varint,
+//     inet, duration, vector (vector additionally requires dim=<N>)
+//   - containers: set[T], list[T], map[K]V. Bare set / list / map default to
+//     inferring their inner types from the Go field type.
+//   - user-defined types: udt[<name>]
+//   - infer — only valid inside brackets; reuses the Go field's inferred type
+//     at that position. E.g. map[uuid]infer overrides only the key type.
+//
+// Composed example: astra:"type=map[uuid]set[ascii]"
 //
 // Example:
 //

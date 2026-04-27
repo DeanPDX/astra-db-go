@@ -879,3 +879,139 @@ func TestInfer_AllFieldsSkipped(t *testing.T) {
 		t.Fatal("expected error for no columns")
 	}
 }
+
+// TestInfer_BracketTypeOverride covers the parameterized type= forms:
+// set[T], list[T], map[K]V, udt[<name>], and the infer keyword. Bare
+// containers (type=set / type=list / type=map) are still covered by
+// TestGoTypeToColumn and the TestInferDocs* suite.
+func TestInfer_BracketTypeOverride(t *testing.T) {
+	t.Run("set[ascii] on []string", func(t *testing.T) {
+		type Row struct {
+			ID   string   `json:"id" astra:"pk"`
+			Tags []string `json:"tags" astra:"type=set[ascii]"`
+		}
+		def, err := Infer[Row]()
+		if err != nil {
+			t.Fatalf("Infer errored: %v", err)
+		}
+		col, _ := def.Columns.Get("tags")
+		if col.Type != TypeSet {
+			t.Fatalf("outer type = %q, want %q", col.Type, TypeSet)
+		}
+		if col.ValueType == nil || col.ValueType.Type != TypeAscii {
+			t.Errorf("value type = %+v, want ascii", col.ValueType)
+		}
+	})
+
+	t.Run("list[blob] on []string", func(t *testing.T) {
+		type Row struct {
+			ID   string   `json:"id" astra:"pk"`
+			Data []string `json:"data" astra:"type=list[blob]"`
+		}
+		def, err := Infer[Row]()
+		if err != nil {
+			t.Fatalf("Infer errored: %v", err)
+		}
+		col, _ := def.Columns.Get("data")
+		if col.Type != TypeList {
+			t.Fatalf("outer = %q, want %q", col.Type, TypeList)
+		}
+		if col.ValueType == nil || col.ValueType.Type != TypeBlob {
+			t.Errorf("value = %+v, want blob", col.ValueType)
+		}
+	})
+
+	t.Run("map[uuid]blob on map[string]string", func(t *testing.T) {
+		type Row struct {
+			ID string            `json:"id" astra:"pk"`
+			M  map[string]string `json:"m" astra:"type=map[uuid]blob"`
+		}
+		def, err := Infer[Row]()
+		if err != nil {
+			t.Fatalf("Infer errored: %v", err)
+		}
+		col, _ := def.Columns.Get("m")
+		if col.Type != TypeMap {
+			t.Fatalf("outer = %q, want %q", col.Type, TypeMap)
+		}
+		if col.KeyType == nil || *col.KeyType != TypeUUID {
+			t.Errorf("key = %v, want %q", col.KeyType, TypeUUID)
+		}
+		if col.ValueType == nil || col.ValueType.Type != TypeBlob {
+			t.Errorf("value = %+v, want blob", col.ValueType)
+		}
+	})
+
+	t.Run("map[infer]infer on map[UUID][]byte", func(t *testing.T) {
+		type Row struct {
+			ID string                    `json:"id" astra:"pk"`
+			M  map[datatypes.UUID][]byte `json:"m" astra:"type=map[infer]infer"`
+		}
+		def, err := Infer[Row]()
+		if err != nil {
+			t.Fatalf("Infer errored: %v", err)
+		}
+		col, _ := def.Columns.Get("m")
+		if col.KeyType == nil || *col.KeyType != TypeUUID {
+			t.Errorf("key = %v, want %q", col.KeyType, TypeUUID)
+		}
+		if col.ValueType == nil || col.ValueType.Type != TypeBlob {
+			t.Errorf("value = %+v, want blob", col.ValueType)
+		}
+	})
+
+	t.Run("udt[person]", func(t *testing.T) {
+		type Person struct{ Name string }
+		type Row struct {
+			ID string  `json:"id" astra:"pk"`
+			P  *Person `json:"p" astra:"type=udt[person]"`
+		}
+		def, err := Infer[Row]()
+		if err != nil {
+			t.Fatalf("Infer errored: %v", err)
+		}
+		col, _ := def.Columns.Get("p")
+		if col.Type != TypeUDT {
+			t.Fatalf("type = %q, want %q", col.Type, TypeUDT)
+		}
+		if col.UDTName == nil || *col.UDTName != "person" {
+			t.Errorf("UDT name = %v, want person", col.UDTName)
+		}
+	})
+
+	t.Run("map[text]udt[person]", func(t *testing.T) {
+		type Person struct{ Name string }
+		type Row struct {
+			ID string             `json:"id" astra:"pk"`
+			M  map[string]*Person `json:"m" astra:"type=map[text]udt[person]"`
+		}
+		def, err := Infer[Row]()
+		if err != nil {
+			t.Fatalf("Infer errored: %v", err)
+		}
+		col, _ := def.Columns.Get("m")
+		if col.KeyType == nil || *col.KeyType != TypeText {
+			t.Errorf("key = %v, want %q", col.KeyType, TypeText)
+		}
+		if col.ValueType == nil || col.ValueType.Type != TypeUDT {
+			t.Fatalf("value type = %+v, want udt", col.ValueType)
+		}
+		if col.ValueType.UDTName == nil || *col.ValueType.UDTName != "person" {
+			t.Errorf("value UDT name = %v, want person", col.ValueType.UDTName)
+		}
+	})
+
+	t.Run("set[ascii] on non-slice errors", func(t *testing.T) {
+		type Row struct {
+			ID string `json:"id" astra:"pk"`
+			S  string `json:"s" astra:"type=set[ascii]"`
+		}
+		_, err := Infer[Row]()
+		if err == nil {
+			t.Fatal("expected error for type=set on non-slice")
+		}
+		if !strings.Contains(err.Error(), "type=set requires slice") {
+			t.Errorf("error = %q, want containing %q", err.Error(), "type=set requires slice")
+		}
+	})
+}

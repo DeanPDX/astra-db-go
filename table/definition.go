@@ -396,6 +396,7 @@ const (
 	TypeList      = "list"
 	TypeMap       = "map"
 	TypeUDT       = "userDefined"
+	TypeDuration  = "duration"
 )
 
 // Text creates a text column
@@ -486,6 +487,11 @@ func Inet() Column {
 // Ascii creates an ascii column
 func Ascii() Column {
 	return Column{Type: TypeAscii}
+}
+
+// Duration creates a duration column
+func Duration() Column {
+	return Column{Type: TypeDuration}
 }
 
 // Vector creates a vector column with the specified dimension
