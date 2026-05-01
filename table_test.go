@@ -1695,9 +1695,9 @@ func TestTableAlter_CommandMarshal(t *testing.T) {
 			tbl.newCmd("alterTable", alterTablePayload{
 				Operation: table.AlterOperation{
 					Add: &table.AddColumns{
-						Columns: map[string]table.Column{
-							"is_summer_reading": table.Boolean(),
-							"library_branch":    table.Text(),
+						Columns: table.Columns{
+							{"is_summer_reading", table.Boolean()},
+							{"library_branch", table.Text()},
 						},
 					},
 				},
@@ -1710,8 +1710,8 @@ func TestTableAlter_CommandMarshal(t *testing.T) {
 			tbl.newCmd("alterTable", alterTablePayload{
 				Operation: table.AlterOperation{
 					Add: &table.AddColumns{
-						Columns: map[string]table.Column{
-							"example_vector": table.Vector(1024),
+						Columns: table.Columns{
+							{"example_vector", table.Vector(1024)},
 						},
 					},
 				},
@@ -1792,8 +1792,8 @@ func TestTableAlter_HappyPath(t *testing.T) {
 	tbl := httpTestTable(ts)
 	err := tbl.AlterTable(context.Background(), table.AlterOperation{
 		Add: &table.AddColumns{
-			Columns: map[string]table.Column{
-				"is_summer_reading": table.Boolean(),
+			Columns: table.Columns{
+				{"is_summer_reading", table.Boolean()},
 			},
 		},
 	}, options.AlterTable())
@@ -1832,7 +1832,7 @@ func TestTableAlter_RejectsZeroOrMultipleOperations(t *testing.T) {
 	})
 	t.Run("two operations set", func(t *testing.T) {
 		err := tbl.AlterTable(context.Background(), table.AlterOperation{
-			Add:  &table.AddColumns{Columns: map[string]table.Column{"x": table.Text()}},
+			Add:  &table.AddColumns{Columns: table.Columns{{"x", table.Text()}}},
 			Drop: &table.DropColumns{Columns: []string{"y"}},
 		})
 		if err == nil {

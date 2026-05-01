@@ -671,8 +671,8 @@ func TableAlter(e *harness.TestEnv) error {
 
 	tbl, err := db.CreateTable(ctx, alterTableName, table.Definition{
 		Columns: table.Columns{
-			"title":  table.Text(),
-			"author": table.Text(),
+			{"title", table.Text()},
+			{"author", table.Text()},
 		},
 		PrimaryKey: table.PrimaryKey{
 			PartitionBy: []string{"title"},
@@ -695,8 +695,8 @@ func TableAlter(e *harness.TestEnv) error {
 	err = tbl.AlterTable(ctx, table.AlterOperation{
 		Add: &table.AddColumns{
 			Columns: table.Columns{
-				"is_summer_reading": table.Boolean(),
-				"library_branch":    table.Text(),
+				{"is_summer_reading", table.Boolean()},
+				{"library_branch", table.Text()},
 			},
 		},
 	})
