@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package options
+package results
 
-import "time"
+import "github.com/datastax/astra-db-go/table"
 
-// TODO: this is unused currently. Either figure out what my intent was when I created it or delete it.
+// TableDescriptor represents the descriptor for a table, including its name and definition.
+type TableDescriptor struct {
+	// Name of the table.
+	Name string `json:"name"`
 
-// InsertOneOptions contains both Method options (sent to DB) and Request options (client side).
-type InsertOneOptions struct {
-	// Ordered controls whether the insert should be ordered.
-	Ordered *bool `json:"ordered,omitempty"`
-
-	// Timeout sets the timeout for the insert operation (client-side, not sent to the API).
-	Timeout *time.Duration
+	// Definition of the table (columns and primary key).
+	// Only populated when listTables is called with explain=true.
+	Definition table.Definition `json:"definition"`
 }

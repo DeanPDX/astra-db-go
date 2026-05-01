@@ -15,13 +15,23 @@
 package astradb
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/datastax/astra-db-go/filter"
+	"github.com/datastax/astra-db-go/internal/testutils"
 	"github.com/datastax/astra-db-go/options"
 	"github.com/datastax/astra-db-go/sort"
 	"github.com/datastax/astra-db-go/table"
+	"github.com/datastax/astra-db-go/update"
 )
 
 func TestCreateTablePayloadMarshal(t *testing.T) {
@@ -420,7 +430,7 @@ func TestTableFindPayloadMarshal(t *testing.T) {
 			name: "with projection include",
 			payload: tableFindPayload{
 				Filter:     filter.F{},
-				Projection: map[string]bool{"title": true, "rating": true},
+				Projection: map[string]any{"title": true, "rating": true},
 			},
 			check: func(t *testing.T, result map[string]any) {
 				proj, ok := result["projection"].(map[string]any)
@@ -500,7 +510,7 @@ func TestTableFindOptions(t *testing.T) {
 		opts, err := options.MergeAndValidate(
 			options.TableFind().
 				SetSort(sort.Asc("rating")).
-				SetProjection(map[string]bool{"title": true}).
+				SetProjection(map[string]any{"title": true}).
 				SetLimit(10).
 				SetSkip(5).
 				SetIncludeSimilarity(true).
@@ -1259,3 +1269,576 @@ func TestCreateIndedxOptionsValidation(t *testing.T) {
 		}
 	})
 }
+
+// #region Table.UpdateOne tests
+
+// This example was taken from the documentation:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/row-methods/update.html#example-update-multiple
+// ^ confusingly says "update multiple" but it means multiple fields on an updateOne command.
+const exampleUpdateOneSetPayloadJSON = `{
+  "updateOne": {
+    "filter": {
+    	"author": "John Anthony",
+		"title": "Hidden Shadows of the Past"
+    },
+    "update": {
+        "$set": {
+        	"genres": ["Fiction", "Drama"],  
+			"rating": 4.5
+        },
+        "$unset": {
+            "borrower": ""
+        }
+    }
+  }
+}`
+
+// TestTableUpdateOneCommandMarshal_Set verifies the updateOne command payload
+// for a simple $set against a compound primary key.
+func TestTableUpdateOneCommandMarshal_Set(t *testing.T) {
+	tbl := getTestTable(t)
+	tests := []testutils.JSONTestCase{{
+		Name:     "Set rating and genres, unset borrower",
+		Expected: exampleUpdateOneSetPayloadJSON,
+		Args: []any{
+			tbl.newCmd("updateOne", tableUpdateOnePayload{
+				// Interestingly, we don't currently have a way to express two top-level filters like this
+				// with the fluent builder. Right now we could express with filter.And(...). Which, logically,
+				// I believe is the same as just passing a map with multiple keys. Might consider adding to
+				// filter fluent builder at some point.
+				Filter: filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+				// Fluent builder
+				Update: update.Table().Set("rating", 4.5).Set("genres", []string{"Fiction", "Drama"}).Unset("borrower"),
+			}),
+			tbl.newCmd("updateOne", tableUpdateOnePayload{
+				Filter: filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+				// Test out update.U directly as well.
+				Update: update.U{"$set": update.U{"genres": []string{"Fiction", "Drama"}, "rating": 4.5}, "$unset": update.U{"borrower": ""}},
+			}),
+		},
+	}}
+	testutils.RunJSONTestCases(t, tests)
+}
+
+// httpTestTable creates a Table backed by the given httptest.Server for
+// integration-style testing. Mirrors newTestCollection in collection_test.go.
+func httpTestTable(ts *httptest.Server, apiOpts ...options.APIOption) *Table {
+	allOpts := append([]options.APIOption{options.WithToken("test-token")}, apiOpts...)
+	client := NewClient(allOpts...)
+	db := client.Database(ts.URL, options.WithKeyspace("ks"))
+	return db.Table("tbl")
+}
+
+// TestTableUpdateOne_HappyPath verifies that UpdateOne posts the expected
+// request body, reads a successful status response, and returns nil.
+func TestTableUpdateOne_HappyPath(t *testing.T) {
+	var gotBody atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		if r.Header.Get("Token") != "test-token" {
+			t.Errorf("expected token %q in request header, got %q", "test-token", r.Header.Get("Token"))
+		}
+		gotBody.Store(b)
+		w.Header().Set("Content-Type", "application/json")
+		// Server always returns this so this is a good proxy for verifying that the
+		// client correctly reads the response body.
+		fmt.Fprint(w, `{"status":{"matchedCount":1,"modifiedCount":1,"upsertCount":0}}`)
+	}))
+	defer ts.Close()
+
+	tbl := httpTestTable(ts)
+	err := tbl.UpdateOne(context.Background(),
+		filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+		update.Table().Set("rating", 4.5).Unset("borrower"),
+		options.TableUpdateOne(), // Empty options just to throw a slight curveball.
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body, _ := gotBody.Load().([]byte)
+	var sentBody map[string]any
+	if err := json.Unmarshal(body, &sentBody); err != nil {
+		t.Fatalf("server-received body was not JSON: %v (%s)", err, body)
+	}
+	inner, ok := sentBody["updateOne"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level key %q, got: %s", "updateOne", body)
+	}
+	if _, ok := inner["filter"]; !ok {
+		t.Errorf("expected filter key in updateOne payload, got: %s", body)
+	}
+	if _, ok := inner["update"]; !ok {
+		t.Errorf("expected update key in updateOne payload, got: %s", body)
+	}
+}
+
+// TestTableUpdateOne_APIOptionsOverrideToken proves the command-level
+// APIOptions override flows end-to-end through newCmdWithMergedOptions.
+func TestTableUpdateOne_APIOptionsOverrideToken(t *testing.T) {
+	var receivedToken atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedToken.Store(r.Header.Get("Token"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"matchedCount":1,"modifiedCount":1}}`)
+	}))
+	defer ts.Close()
+
+	tbl := httpTestTable(ts) // uses "test-token" at client level
+	err := tbl.UpdateOne(context.Background(),
+		filter.F{"pk": 1},
+		update.Table().Set("x", 2),
+		options.TableUpdateOne().SetAPIOptions(options.API().SetToken("override-token")),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, _ := receivedToken.Load().(string); got != "override-token" {
+		t.Errorf("expected token %q in request header, got %q", "override-token", got)
+	}
+}
+
+// TestTableUpdateOne_ContextCanceled verifies that a pre-canceled context
+// causes UpdateOne to return without a successful round-trip.
+func TestTableUpdateOne_ContextCanceled(t *testing.T) {
+	var calls atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"matchedCount":1,"modifiedCount":1}}`)
+	}))
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tbl := httpTestTable(ts)
+	err := tbl.UpdateOne(ctx,
+		filter.F{"pk": 1},
+		update.Table().Set("x", 2),
+	)
+	if calls.Load() != 0 {
+		// If the context cancellation is working properly, the handler should never be called
+		t.Errorf("expected 0 calls to server, got %d", calls.Load())
+	}
+	if err == nil {
+		t.Fatal("expected error from canceled context, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got: %v", err)
+	}
+}
+
+// TestTableUpdateOne_ContextTimeout verifies context timeout works.
+func TestTableUpdateOne_ContextTimeout(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		time.Sleep(100 * time.Millisecond) // Sleep to simulate a long request and give the test a chance to timeout
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":{"matchedCount":1,"modifiedCount":1}}`)
+	}))
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	tbl := httpTestTable(ts)
+	start := time.Now()
+	err := tbl.UpdateOne(ctx,
+		filter.F{"pk": 1},
+		update.Table().Set("x", 2),
+	)
+	elapsed := time.Since(start)
+
+	if calls.Load() != 1 {
+		// Just make sure it got to our server
+		t.Errorf("expected 1 call to server, got %d", calls.Load())
+	}
+	if err == nil {
+		t.Fatal("expected error from canceled context, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context.DeadlineExceeded, got: %v", err)
+	}
+	if elapsed > 100*time.Millisecond {
+		// This is a timing-based assertion. If it fails in CI/CD due to slowness,
+		// we can relax it. Works fine on my machine though.
+		t.Errorf("cancellation took too long: %v", elapsed)
+	}
+}
+
+// #endregion
+
+// #region Table.DeleteOne tests
+
+// This example was taken from the documentation:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/row-methods/delete-one.html#delete-a-row-by-primary-key
+const exampleDeleteOnePayloadJSON = `{
+  "deleteOne": {
+    "filter": {
+      "author": "John Anthony",
+      "title": "Hidden Shadows of the Past"
+    }
+  }
+}`
+
+// TestTableDeleteOne_CommandMarshal verifies the deleteOne command payload
+// for a full-primary-key filter.
+func TestTableDeleteOne_CommandMarshal(t *testing.T) {
+	tbl := getTestTable(t)
+	tests := []testutils.JSONTestCase{{
+		Name:     "Delete by compound primary key",
+		Expected: exampleDeleteOnePayloadJSON,
+		Args: []any{
+			tbl.newCmd("deleteOne", tableDeleteOnePayload{
+				Filter: filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+			}),
+		},
+	}}
+	testutils.RunJSONTestCases(t, tests)
+}
+
+// TestTableDeleteOne_HappyPath verifies that DeleteOne posts the expected
+// request body, reads a successful status response, and returns nil.
+// NOTE: thought about also repeating the override token etc. but that is REALLY
+// testing the command implementation, not the commands themselves.
+func TestTableDeleteOne_HappyPath(t *testing.T) {
+	var gotBody atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		if r.Header.Get("Token") != "test-token" {
+			t.Errorf("expected token %q in request header, got %q", "test-token", r.Header.Get("Token"))
+		}
+		gotBody.Store(b)
+		w.Header().Set("Content-Type", "application/json")
+		// From the docs:
+		// > Always returns a status.deletedCount of -1, regardless of whether a row was found and deleted.
+		fmt.Fprint(w, `{"status":{"deletedCount":-1}}`)
+	}))
+	defer ts.Close()
+
+	tbl := httpTestTable(ts)
+	err := tbl.DeleteOne(context.Background(),
+		filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+		options.TableDeleteOne(), // Empty options just to throw a slight curveball.
+	)
+	// Make sure we don't get an error when server returns the expected deletedCount of -1
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// #endregion
+
+// #region Table.DeleteMany tests
+
+// From the docs:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/row-methods/delete-many.html#delete-a-row-by-primary-key
+// Order of filter keys changed to be alphanumeric.
+const exampleDeleteManyPayloadJSON = `{
+  "deleteMany": {
+    "filter": {
+      "author": "John Anthony",  
+	  "title": "Hidden Shadows of the Past"
+    }
+  }
+}`
+
+// TestTableDeleteMany_CommandMarshal verifies the deleteMany command payload
+// matches docs example.
+func TestTableDeleteMany_CommandMarshal(t *testing.T) {
+	tbl := getTestTable(t)
+	tests := []testutils.JSONTestCase{{
+		Name:     "Composite primary key: title + author",
+		Expected: exampleDeleteManyPayloadJSON,
+		Args: []any{
+			tbl.newCmd("deleteMany", tableDeleteManyPayload{
+				Filter: filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+			}),
+		},
+	}}
+	testutils.RunJSONTestCases(t, tests)
+}
+
+// TestTableDeleteMany_HappyPath verifies DeleteMany posts the expected request
+// body, handles the documented deletedCount=-1 response, and returns nil.
+func TestTableDeleteMany_HappyPath(t *testing.T) {
+	var gotBody atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		if r.Header.Get("Token") != "test-token" {
+			t.Errorf("expected token %q in request header, got %q", "test-token", r.Header.Get("Token"))
+		}
+		gotBody.Store(b)
+		w.Header().Set("Content-Type", "application/json")
+		// From the docs:
+		// > Always returns a status.deletedCount of -1, regardless of whether a row was found and deleted.
+		fmt.Fprint(w, `{"status":{"deletedCount":-1}}`)
+	}))
+	defer ts.Close()
+
+	tbl := httpTestTable(ts)
+	err := tbl.DeleteMany(context.Background(),
+		filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+		options.TableDeleteMany(), // Empty options just to throw a slight curveball.
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestTableDeleteMany_EnforceNonNilFilter ensures a nil filter is rejected.
+// Callers must pass filter.F{} explicitly to delete all rows so total-delete
+// is always intentional.
+func TestTableDeleteMany_EnforceNonNilFilter(t *testing.T) {
+	tbl := &Table{}
+	err := tbl.DeleteMany(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error when filter is nil, got nil")
+	}
+	if !errors.Is(err, ErrNilFilter) {
+		t.Errorf("expected ErrNilFilter, got: %v", err)
+	}
+}
+
+// #endregion
+
+// #region Table.AlterTable tests
+
+// Doc reference: https://docs.datastax.com/en/astra-db-serverless/api-reference/table-methods/alter-table.html#example-add
+const exampleAlterTableAddPayloadJSON = `{
+  "alterTable": {
+    "operation": {
+      "add": {
+        "columns": {
+          "is_summer_reading": {"type":"boolean"},
+          "library_branch": {"type":"text"}
+        }
+      }
+    }
+  }
+}`
+
+// Doc reference: https://docs.datastax.com/en/astra-db-serverless/api-reference/table-methods/alter-table.html#example-add-vector
+// Vector form of an "add" operation.
+const exampleAlterTableAddVectorColumnPayloadJSON = `{
+  "alterTable": {
+    "operation": {
+      "add": {
+        "columns": {
+          "example_vector": {"type":"vector","dimension":1024}
+        }
+      }
+    }
+  }
+}`
+
+// Doc reference: https://docs.datastax.com/en/astra-db-serverless/api-reference/table-methods/alter-table.html#example-drop
+const exampleAlterTableDropPayloadJSON = `{
+  "alterTable": {
+    "operation": {
+      "drop": {
+        "columns": ["is_summer_reading", "library_branch"]
+      }
+    }
+  }
+}`
+
+// Doc reference: https://docs.datastax.com/en/astra-db-serverless/api-reference/table-methods/alter-table.html#example-add-vectorize
+const exampleAlterTableAddVectorizePayloadJSON = `{
+  "alterTable": {
+    "operation": {
+      "addVectorize": {
+        "columns": {
+          "summary_vec": {
+            "provider": "openai",
+            "modelName": "text-embedding-3-small",
+            "authentication": {"providerKey": "OPENAI_API_KEY"},
+			"parameters": {"organizationId": "ORGANIZATION_ID","projectId": "PROJECT_ID"}
+          }
+        }
+      }
+    }
+  }
+}`
+
+// Doc reference: https://docs.datastax.com/en/astra-db-serverless/api-reference/table-methods/alter-table.html#example-drop-vectorize
+const exampleAlterTableDropVectorizePayloadJSON = `{
+  "alterTable": {
+    "operation": {
+      "dropVectorize": {
+        "columns": ["plot_synopsis"]
+      }
+    }
+  }
+}`
+
+// TestTableAlter_CommandMarshal verifies that the alterTable payload for each
+// of the four operations matches the docs curl examples.
+func TestTableAlter_CommandMarshal(t *testing.T) {
+	tbl := getTestTable(t)
+	tests := []testutils.JSONTestCase{{
+		Name:     "Add columns",
+		Expected: exampleAlterTableAddPayloadJSON,
+		Args: []any{
+			tbl.newCmd("alterTable", alterTablePayload{
+				Operation: table.AlterOperation{
+					Add: &table.AddColumns{
+						Columns: map[string]table.Column{
+							"is_summer_reading": table.Boolean(),
+							"library_branch":    table.Text(),
+						},
+					},
+				},
+			}),
+		},
+	}, {
+		Name:     "Add vector column",
+		Expected: exampleAlterTableAddVectorColumnPayloadJSON,
+		Args: []any{
+			tbl.newCmd("alterTable", alterTablePayload{
+				Operation: table.AlterOperation{
+					Add: &table.AddColumns{
+						Columns: map[string]table.Column{
+							"example_vector": table.Vector(1024),
+						},
+					},
+				},
+			}),
+		},
+	}, {
+		Name:     "Drop columns",
+		Expected: exampleAlterTableDropPayloadJSON,
+		Args: []any{
+			tbl.newCmd("alterTable", alterTablePayload{
+				Operation: table.AlterOperation{
+					Drop: &table.DropColumns{
+						Columns: []string{"is_summer_reading", "library_branch"},
+					},
+				},
+			}),
+		},
+	}, {
+		Name:     "Add vectorize",
+		Expected: exampleAlterTableAddVectorizePayloadJSON,
+		Args: []any{
+			tbl.newCmd("alterTable", alterTablePayload{
+				Operation: table.AlterOperation{
+					AddVectorize: &table.AddVectorize{
+						Columns: map[string]table.VectorService{
+							"summary_vec": {
+								Provider:  "openai",
+								ModelName: "text-embedding-3-small",
+								Authentication: map[string]string{
+									"providerKey": "OPENAI_API_KEY",
+								},
+								Parameters: map[string]string{
+									"organizationId": "ORGANIZATION_ID",
+									"projectId":      "PROJECT_ID",
+								},
+							},
+						},
+					},
+				},
+			}),
+		},
+	}, {
+		Name:     "Drop vectorize",
+		Expected: exampleAlterTableDropVectorizePayloadJSON,
+		Args: []any{
+			tbl.newCmd("alterTable", alterTablePayload{
+				Operation: table.AlterOperation{
+					DropVectorize: &table.DropVectorize{
+						Columns: []string{"plot_synopsis"},
+					},
+				},
+			}),
+		},
+	}}
+	testutils.RunJSONTestCases(t, tests)
+}
+
+// TestTableAlter_HappyPath verifies that AlterTable posts the expected request
+// body for an "add columns" call, reads the documented success response, and
+// returns nil.
+func TestTableAlter_HappyPath(t *testing.T) {
+	var gotBody atomic.Value
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		if r.Header.Get("Token") != "test-token" {
+			t.Errorf("expected token %q in request header, got %q", "test-token", r.Header.Get("Token"))
+		}
+		gotBody.Store(b)
+		w.Header().Set("Content-Type", "application/json")
+		// Doc reference: https://docs.datastax.com/en/astra-db-serverless/api-reference/table-methods/alter-table.html
+		fmt.Fprint(w, `{"status":{"ok":1}}`)
+	}))
+	defer ts.Close()
+
+	tbl := httpTestTable(ts)
+	err := tbl.AlterTable(context.Background(), table.AlterOperation{
+		Add: &table.AddColumns{
+			Columns: map[string]table.Column{
+				"is_summer_reading": table.Boolean(),
+			},
+		},
+	}, options.AlterTable())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body, _ := gotBody.Load().([]byte)
+	var sentBody map[string]any
+	if err := json.Unmarshal(body, &sentBody); err != nil {
+		t.Fatalf("server-received body was not JSON: %v (%s)", err, body)
+	}
+	inner, ok := sentBody["alterTable"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level key %q, got: %s", "alterTable", body)
+	}
+	op, ok := inner["operation"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected operation key in alterTable payload, got: %s", body)
+	}
+	if _, ok := op["add"]; !ok {
+		t.Errorf("expected add key in operation payload, got: %s", body)
+	}
+}
+
+// TestTableAlter_RejectsZeroOrMultipleOperations ensures the client refuses
+// payloads where the operation field is empty or sets more than one of
+// Add/Drop/AddVectorize/DropVectorize, matching the Data API constraint.
+func TestTableAlter_RejectsZeroOrMultipleOperations(t *testing.T) {
+	tbl := getTestTable(t)
+	t.Run("empty operation", func(t *testing.T) {
+		err := tbl.AlterTable(context.Background(), table.AlterOperation{})
+		if err == nil {
+			t.Fatal("expected error for empty operation, got nil")
+		}
+	})
+	t.Run("two operations set", func(t *testing.T) {
+		err := tbl.AlterTable(context.Background(), table.AlterOperation{
+			Add:  &table.AddColumns{Columns: map[string]table.Column{"x": table.Text()}},
+			Drop: &table.DropColumns{Columns: []string{"y"}},
+		})
+		if err == nil {
+			t.Fatal("expected error for multiple operations, got nil")
+		}
+	})
+}
+
+// #endregion

@@ -139,3 +139,17 @@ func TestEmptyFilterMarshal(t *testing.T) {
 		notExpected(t, "null", string(got))
 	}
 }
+
+// Docs example for lexical match operator:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/document-methods/find-one.html#use-lexicographical-matching-to-find-a-document
+func TestLexicalMatch(t *testing.T) {
+	f := filter.LexicalMatch("tree hill")
+	got, err := json.Marshal(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := `{"$lexical":{"$match":"tree hill"}}`
+	if string(got) != expected {
+		notExpected(t, expected, string(got))
+	}
+}

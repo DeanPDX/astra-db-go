@@ -62,16 +62,6 @@ func newDatabaseAdminCmd(db *Db, name string, payload any) command {
 	}
 }
 
-// newCmdResource creates a new command from the given DB with a resource
-func newCmdResource(d *Db, resource, name string, payload any) command {
-	return command{
-		db:           d,
-		name:         name,
-		resourceName: resource,
-		payload:      payload,
-	}
-}
-
 // newCmdWithOptions creates a new command with resource and command-level options
 func newCmdWithOptions(d *Db, resource, name string, payload any, resourceOpts *options.APIOptions, cmdOpts ...options.APIOption) command {
 	var cmdOptions *options.APIOptions
@@ -79,13 +69,18 @@ func newCmdWithOptions(d *Db, resource, name string, payload any, resourceOpts *
 		cmdOptions = options.NewAPIOptions(cmdOpts...)
 	}
 
+	return newCmdWithMergedOptions(d, resource, name, payload, resourceOpts, cmdOptions)
+}
+
+// newCmdWithMergedOptions creates a new command with resource and merged command-level options
+func newCmdWithMergedOptions(d *Db, resource, name string, payload any, resourceOpts *options.APIOptions, cmdOpts *options.APIOptions) command {
 	return command{
 		db:              d,
 		name:            name,
 		resourceName:    resource,
 		payload:         payload,
 		resourceOptions: resourceOpts,
-		commandOptions:  cmdOptions,
+		commandOptions:  cmdOpts,
 	}
 }
 

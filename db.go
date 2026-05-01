@@ -39,6 +39,12 @@ func (d *Db) newCmd(name string, payload any, opts ...options.APIOption) command
 	return newCmdWithOptions(d, "", name, payload, d.options, opts...)
 }
 
+// newCmdWithMergedOptions creates a database-level command with a pre-merged
+// *APIOptions for the command-level overrides.
+func (d *Db) newCmdWithMergedOptions(name string, payload any, cmdOpts *options.APIOptions) command {
+	return newCmdWithMergedOptions(d, "", name, payload, d.options, cmdOpts)
+}
+
 // Endpoint returns the database API endpoint.
 func (d *Db) Endpoint() string {
 	return d.endpoint
@@ -170,8 +176,12 @@ func (d *Db) DropCollection(ctx context.Context, name string) error {
 //	}
 //
 // Options passed here override those set on the database.
-func (d *Db) ListCollections(ctx context.Context, opts ...options.APIOption) ([]results.CollectionDescriptor, error) {
-	return listCollections(d, ctx, true, opts...)
+func (d *Db) ListCollections(ctx context.Context, opts ...options.ListCollectionsOption) ([]results.CollectionDescriptor, error) {
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("invalid options: %w", err)
+	}
+	return listCollections[[]results.CollectionDescriptor](d, ctx, true, merged.APIOptions)
 }
 
 // ListCollectionNames lists the names of all collections in the database.
@@ -190,47 +200,122 @@ func (d *Db) ListCollections(ctx context.Context, opts ...options.APIOption) ([]
 //	}
 //
 // Options passed here override those set on the database.
-func (d *Db) ListCollectionNames(ctx context.Context, opts ...options.APIOption) ([]string, error) {
-	collections, err := listCollections(d, ctx, false, opts...)
+func (d *Db) ListCollectionNames(ctx context.Context, opts ...options.ListCollectionNamesOption) ([]string, error) {
+	merged, err := options.MergeAndValidate(opts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid options: %w", err)
 	}
+	return listCollections[[]string](d, ctx, false, merged.APIOptions)
+}
 
-	names := make([]string, len(collections))
-	for i, coll := range collections {
-		names[i] = coll.Name
-	}
-
-	return names, nil
+// Type constraint for generic listCollections function.
+type collections interface {
+	[]results.CollectionDescriptor | []string
 }
 
 // listCollectionsResponse is the response from the findCollections command
-type listCollectionsResponse struct {
+type listCollectionsResponse[T collections] struct {
 	Status struct {
-		Collections []results.CollectionDescriptor `json:"collections"`
+		Collections T `json:"collections"`
 	} `json:"status"`
 }
 
 // listCollections is the internal helper for listing collections
-func listCollections(d *Db, ctx context.Context, explain bool, opts ...options.APIOption) ([]results.CollectionDescriptor, error) {
+func listCollections[T collections](d *Db, ctx context.Context, explain bool, cmdOpts *options.APIOptions) (T, error) {
 	payload := map[string]any{
 		"options": map[string]any{
 			"explain": explain,
 		},
 	}
-
-	cmd := d.newCmd("findCollections", payload, opts...)
+	cmd := d.newCmdWithMergedOptions("findCollections", payload, cmdOpts)
 	b, _, err := cmd.Execute(ctx)
 	if err != nil {
-		return nil, err
+		var zero T
+		return zero, err
 	}
+	var resp listCollectionsResponse[T]
+	err = json.Unmarshal(b, &resp)
+	return resp.Status.Collections, err
+}
 
-	var resp listCollectionsResponse
-	if err := json.Unmarshal(b, &resp); err != nil {
-		return nil, err
+// ListTables lists all tables in the database with their full definitions.
+//
+// You can specify API options via the options parameter to override settings
+// for this command.
+//
+// Example:
+//
+//	tables, err := db.ListTables(ctx)
+//	if err != nil {
+//	    return err
+//	}
+//	for _, t := range tables {
+//	    fmt.Printf("Table: %s (%d columns)\n", t.Name, len(t.Definition.Columns))
+//	}
+//
+// Options passed here override those set on the database.
+func (d *Db) ListTables(ctx context.Context, opts ...options.ListTablesOption) ([]results.TableDescriptor, error) {
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("invalid options: %w", err)
 	}
+	return listTables[[]results.TableDescriptor](d, ctx, true, merged.APIOptions)
+}
 
-	return resp.Status.Collections, nil
+// ListTableNames lists the names of all tables in the database.
+//
+// Example:
+//
+//	names, err := db.ListTableNames(ctx)
+//	if err != nil {
+//	    return err
+//	}
+//	for _, name := range names {
+//	    fmt.Printf("Table: %s\n", name)
+//	}
+//
+// Options passed here override those set on the database.
+func (d *Db) ListTableNames(ctx context.Context, opts ...options.ListTableNamesOption) ([]string, error) {
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("invalid options: %w", err)
+	}
+	return listTables[[]string](d, ctx, false, merged.APIOptions)
+}
+
+// listTablesCommand builds the listTables command for the database.
+func listTablesCommand(d *Db, explain bool, cmdOpts *options.APIOptions) command {
+	payload := map[string]any{
+		"options": map[string]any{
+			"explain": explain,
+		},
+	}
+	return d.newCmdWithMergedOptions("listTables", payload, cmdOpts)
+}
+
+// Type constraint for generic listTables function.
+type tables interface {
+	[]results.TableDescriptor | []string
+}
+
+// listTablesResponse is the response from the listTables command
+type listTablesResponse[T tables] struct {
+	Status struct {
+		Tables T `json:"tables"`
+	} `json:"status"`
+}
+
+// listTables is the internal helper for listing tables
+func listTables[T tables](d *Db, ctx context.Context, explain bool, cmdOpts *options.APIOptions) (T, error) {
+	cmd := listTablesCommand(d, explain, cmdOpts)
+	b, _, err := cmd.Execute(ctx)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	var resp listTablesResponse[T]
+	err = json.Unmarshal(b, &resp)
+	return resp.Status.Tables, err
 }
 
 // DatabaseAdmin returns a DatabaseAdmin for managing keyspaces on this database.

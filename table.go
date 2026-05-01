@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/datastax/astra-db-go/cursor"
+	"github.com/datastax/astra-db-go/cursors"
 	"github.com/datastax/astra-db-go/filter"
 	"github.com/datastax/astra-db-go/options"
 	"github.com/datastax/astra-db-go/ptr"
@@ -27,6 +27,20 @@ import (
 	"github.com/datastax/astra-db-go/sort"
 	"github.com/datastax/astra-db-go/table"
 )
+
+// TableFilter is implemented by [filter.F] and [filter.Filter].
+// See the [filter package] for more details.
+//
+// Example composing Filters:
+//
+//	f := filter.Gt("num_pages", 300)
+//
+// Example using filter.F:
+//
+//	f := filter.F{"num_pages": filter.F{"$gt": 300}}
+//
+// [filter package]: https://pkg.go.dev/github.com/datastax/astra-db-go/filter
+type TableFilter = filter.Filterable
 
 // Table represents a table in the Astra DB.
 //
@@ -56,22 +70,16 @@ func (t *Table) Database() *Db {
 	return t.db
 }
 
-// newCmd creates a command for this table
-func (t *Table) newCmd(name string, payload any, opts ...options.APIOption) command {
-	return newCmdWithOptions(t.db, t.name, name, payload, t.options, opts...)
+// newCmd creates a command for this table. Will merge opts (if any) and apply them
+// as command-level options.
+func (t *Table) newCmd(name string, payload any, cmdOpts ...options.APIOption) command {
+	return newCmdWithOptions(t.db, t.name, name, payload, t.options, cmdOpts...)
 }
 
-// newCmdOverride creates a command with a pre-built *APIOptions override,
+// newCmdWithMergedOptions creates a command with a pre-built *APIOptions override,
 // used by builder-pattern methods where API options flow through the struct.
-func (t *Table) newCmdOverride(name string, payload any, override *options.APIOptions) command {
-	return command{
-		db:              t.db,
-		name:            name,
-		resourceName:    t.name,
-		payload:         payload,
-		resourceOptions: t.options,
-		commandOptions:  override,
-	}
+func (t *Table) newCmdWithMergedOptions(name string, payload any, cmdOpts *options.APIOptions) command {
+	return newCmdWithMergedOptions(t.db, t.name, name, payload, t.options, cmdOpts)
 }
 
 // createTablePayload is the payload for the createTable command
@@ -171,6 +179,105 @@ func (d *Db) CreateTable(ctx context.Context, name string, definition table.Defi
 	}, nil
 }
 
+// alterTablePayload is the payload for the alterTable command.
+type alterTablePayload struct {
+	Operation table.AlterOperation `json:"operation"`
+}
+
+// AlterTable modifies the table's schema. Exactly one operation must be set on
+// op — Add, Drop, AddVectorize, or DropVectorize. The four operations are
+// mutually exclusive per call.
+//
+// Note that the Data API does not allow column type changes (drop and re-add
+// instead) and does not support renaming a table. Dropping a vectorize
+// integration preserves any embeddings already stored in the column; only
+// the auto-embedding integration is removed.
+//
+// After adding columns, index any new columns you intend to filter or sort on.
+//
+// Example — add columns:
+//
+//	err := tbl.AlterTable(ctx, table.AlterOperation{
+//	    Add: &table.AddColumns{
+//	        Columns: table.Columns{
+//	            "is_summer_reading": table.Boolean(),
+//	            "library_branch":    table.Text(),
+//	        },
+//	    },
+//	})
+//
+// Example — drop columns:
+//
+//	err := tbl.AlterTable(ctx, table.AlterOperation{
+//	    Drop: &table.DropColumns{Columns: []string{"borrower"}},
+//	})
+//
+// Example — add vectorize on a vector column:
+//
+//	err := tbl.AlterTable(ctx, table.AlterOperation{
+//	    AddVectorize: &table.AddVectorize{
+//	        Columns: map[string]table.VectorService{
+//	            "summary_vec": {
+//	                Provider:  "openai",
+//	                ModelName: "text-embedding-3-small",
+//	                Authentication: map[string]string{
+//	                    "providerKey": "OPENAI_API_KEY",
+//	                },
+//	            },
+//	        },
+//	    },
+//	})
+//
+// Example — drop vectorize:
+//
+//	err := tbl.AlterTable(ctx, table.AlterOperation{
+//	    DropVectorize: &table.DropVectorize{Columns: []string{"summary_vec"}},
+//	})
+//
+// Note: Warnings are accessible via the WarningHandler option callback only.
+func (t *Table) AlterTable(ctx context.Context, op table.AlterOperation, opts ...options.AlterTableOption) error {
+	if err := validateAlterOperation(op); err != nil {
+		return err
+	}
+
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return fmt.Errorf("invalid options: %w", err)
+	}
+
+	cmd := t.newCmdWithMergedOptions("alterTable", alterTablePayload{
+		Operation: op,
+	}, merged.APIOptions)
+	_, _, err = cmd.Execute(ctx)
+	return err
+}
+
+// validateAlterOperation enforces that exactly one operation field is set on
+// the alterTable operation. The Data API rejects payloads with zero or more
+// than one operation; we surface that locally to give callers a clear error.
+func validateAlterOperation(op table.AlterOperation) error {
+	count := 0
+	if op.Add != nil {
+		count++
+	}
+	if op.Drop != nil {
+		count++
+	}
+	if op.AddVectorize != nil {
+		count++
+	}
+	if op.DropVectorize != nil {
+		count++
+	}
+	if count == 0 {
+		return fmt.Errorf("alterTable: operation must set one of Add, Drop, AddVectorize, DropVectorize")
+	}
+	if count > 1 {
+		return fmt.Errorf("alterTable: only one operation may be set per call (Add, Drop, AddVectorize, DropVectorize are mutually exclusive)")
+	}
+	return nil
+}
+
 // dropTablePayload is the payload for the dropTable command
 type dropTablePayload struct {
 	Name string `json:"name"`
@@ -214,10 +321,10 @@ func dropTableIndexCommand(d *Db, name string) command {
 
 // tableFindPayload is the payload for the find command on tables
 type tableFindPayload struct {
-	Filter     any             `json:"filter,omitempty"`
-	Sort       sort.Sortable   `json:"sort,omitempty"`
-	Projection map[string]bool `json:"projection,omitempty"`
-	Options    *tableFindOpts  `json:"options,omitempty"`
+	Filter     any            `json:"filter,omitempty"`
+	Sort       sort.Sortable  `json:"sort,omitempty"`
+	Projection map[string]any `json:"projection,omitempty"`
+	Options    *tableFindOpts `json:"options,omitempty"`
 }
 
 // tableFindOpts represents the options sub-object in find payload
@@ -247,8 +354,8 @@ type tableFindResponse struct {
 //
 // Example using Next/Decode pattern:
 //
-//	cursor := tbl.Find(ctx, filter.Eq("is_checked_out", false))
-//	defer cursor.Close(ctx)
+//	cursor := tbl.Find(filter.Eq("is_checked_out", false))
+//	defer cursor.Close()
 //
 //	for cursor.Next(ctx) {
 //	    var row MyRow
@@ -263,86 +370,31 @@ type tableFindResponse struct {
 //
 // Example getting all results at once:
 //
-//	cursor := tbl.Find(ctx, filter.F{})
+//	cursor := tbl.Find(filter.F{})
 //	var rows []MyRow
-//	if err := cursor.All(ctx, &rows); err != nil {
+//	if err := cursor.DecodeAll(ctx, &rows); err != nil {
 //	    return err
 //	}
 //
 // Example with vector search:
 //
-//	cursor := tbl.Find(ctx, filter.F{},
+//	cursor := tbl.Find(filter.F{},
 //	    options.TableFind().
 //	        SetSort(sort.Vector([]float32{0.1, 0.2, 0.3})).
 //	        SetIncludeSimilarity(true),
 //	)
-func (t *Table) Find(ctx context.Context, f any, opts ...options.TableFindOption) *cursor.Cursor {
-	// Validate filter type
-	switch f.(type) {
-	case filter.F, filter.Filter, map[string]any, nil:
-		// Allowed filter types
-	default:
-		return cursor.NewWithError(fmt.Errorf("invalid filter type: %T", f))
+//
+// In the unlikely case of an option validation error while creating the cursor,
+// the cursor will be returned in an unclearable errored state.
+func (t *Table) Find(f TableFilter, opts ...options.TableFindOption) *cursors.TableFindCursor {
+	merged, err := options.MergeAndValidate(opts...)
+
+	fetcher := func(ctx context.Context, payload any, opts *options.APIOptions) ([]byte, results.Warnings, error) {
+		cmd := t.newCmdWithMergedOptions("find", payload, merged.APIOptions)
+		return cmd.Execute(ctx)
 	}
 
-	// Build the find options once (they don't change between pages)
-	findOpts, err := options.MergeAndValidate(opts...)
-	if err != nil {
-		return cursor.NewWithError(fmt.Errorf("invalid options: %w", err))
-	}
-
-	// Create a page fetcher that captures the table, filter, and options
-	fetcher := func(fetchCtx context.Context, pageState *string) ([]json.RawMessage, *string, results.Warnings, error) {
-		payload := tableFindPayload{
-			Filter:     f,
-			Sort:       findOpts.Sort,
-			Projection: findOpts.Projection,
-		}
-
-		// Build options - use provided pageState for pagination
-		payloadOpts := &tableFindOpts{}
-		hasOpts := false
-
-		if findOpts.Limit != nil {
-			payloadOpts.Limit = findOpts.Limit
-			hasOpts = true
-		}
-		if findOpts.Skip != nil {
-			payloadOpts.Skip = findOpts.Skip
-			hasOpts = true
-		}
-		if findOpts.IncludeSimilarity != nil {
-			payloadOpts.IncludeSimilarity = findOpts.IncludeSimilarity
-			hasOpts = true
-		}
-		if pageState != nil {
-			payloadOpts.PageState = pageState
-			hasOpts = true
-		} else if findOpts.InitialPageState != nil {
-			// Only use InitialPageState for the first request
-			payloadOpts.PageState = findOpts.InitialPageState
-			hasOpts = true
-		}
-
-		if hasOpts {
-			payload.Options = payloadOpts
-		}
-
-		cmd := t.newCmdOverride("find", payload, findOpts.APIOptions)
-		b, warnings, err := cmd.Execute(fetchCtx)
-		if err != nil {
-			return nil, nil, warnings, err
-		}
-
-		var resp tableFindResponse
-		if err := json.Unmarshal(b, &resp); err != nil {
-			return nil, nil, warnings, err
-		}
-
-		return resp.Data.Documents, resp.Data.NextPageState, warnings, nil
-	}
-
-	return cursor.New(fetcher)
+	return cursors.NewTableFindCursor(f, merged, fetcher, err)
 }
 
 // FindOne finds a single row in a table matching the filter criteria.
@@ -358,7 +410,7 @@ func (t *Table) FindOne(ctx context.Context, f any, opts ...options.TableFindOpt
 	case filter.F, filter.Filter, map[string]any, nil:
 		// Allowed filter types
 	default:
-		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %T", f))
+		return results.NewSingleResult(nil, nil, fmt.Errorf("invalid filter type: %Raw", f))
 	}
 
 	// Build the find options
@@ -381,7 +433,7 @@ func (t *Table) FindOne(ctx context.Context, f any, opts ...options.TableFindOpt
 		}
 	}
 
-	cmd := t.newCmdOverride("findOne", payload, findOpts.APIOptions)
+	cmd := t.newCmdWithMergedOptions("findOne", payload, findOpts.APIOptions)
 	b, warnings, err := cmd.Execute(ctx)
 	return results.NewSingleResult(b, warnings, err)
 }
@@ -443,11 +495,15 @@ type ColumnTypeInfo struct {
 //		Rating:        4.5,
 //	}
 //	resp, err := table.InsertOne(ctx, book)
-func (t *Table) InsertOne(ctx context.Context, row any, opts ...options.APIOption) (TableInsertResponse, error) {
+func (t *Table) InsertOne(ctx context.Context, row any, opts ...options.TableInsertOneOption) (TableInsertResponse, error) {
 	var resp TableInsertResponse
-	cmd := t.newCmd("insertOne", tableInsertOnePayload{
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return resp, fmt.Errorf("invalid options: %w", err)
+	}
+	cmd := t.newCmdWithMergedOptions("insertOne", tableInsertOnePayload{
 		Document: row,
-	}, opts...)
+	}, merged.APIOptions)
 	// Note: Warnings are accessible via the WarningHandler option callback only.
 	b, _, err := cmd.Execute(ctx)
 	if err != nil {
@@ -471,7 +527,7 @@ func (t *Table) InsertOne(ctx context.Context, row any, opts ...options.APIOptio
 //		{Title: "Book 2", Author: "Author 2", NumberOfPages: 200, Rating: 4.5},
 //	}
 //	resp, err := table.InsertMany(ctx, books)
-func (t *Table) InsertMany(ctx context.Context, rows any, opts ...options.APIOption) (TableInsertResponse, error) {
+func (t *Table) InsertMany(ctx context.Context, rows any, opts ...options.TableInsertManyOption) (TableInsertResponse, error) {
 	var resp TableInsertResponse
 
 	// Ensure we have a slice with rows
@@ -480,9 +536,13 @@ func (t *Table) InsertMany(ctx context.Context, rows any, opts ...options.APIOpt
 		return resp, fmt.Errorf("rows: %w", err)
 	}
 
-	cmd := t.newCmd("insertMany", tableInsertManyPayload{
+	merged, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return resp, fmt.Errorf("invalid options: %w", err)
+	}
+	cmd := t.newCmdWithMergedOptions("insertMany", tableInsertManyPayload{
 		Documents: rows,
-	}, opts...)
+	}, merged.APIOptions)
 	// Note: Warnings are accessible via the WarningHandler option callback only.
 	b, _, err := cmd.Execute(ctx)
 	if err != nil {
@@ -490,6 +550,113 @@ func (t *Table) InsertMany(ctx context.Context, rows any, opts ...options.APIOpt
 	}
 	err = json.Unmarshal(b, &resp)
 	return resp, err
+}
+
+// tableUpdateOnePayload is the payload for the updateOne command on tables.
+type tableUpdateOnePayload struct {
+	Filter TableFilter `json:"filter"`
+	Update TableUpdate `json:"update"`
+}
+
+// UpdateOne updates a single row matching the filter.
+//
+// The filter must describe the complete primary key using equality on
+// primary-key columns. The update parameter should be an [update.U]
+// expression built via update.Table(), e.g.
+// update.Table().Set("rating", 4.5).Unset("borrower").
+//
+// If no row matches and the update sets at least one non-null value, a new
+// row is created (implicit upsert). You cannot update primary key values.
+//
+// Options passed here override those set on the table.
+//
+// Example:
+//
+//	err := tbl.UpdateOne(ctx,
+//	    filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+//	    update.Table().Set("rating", 4.5).Unset("borrower"),
+//	)
+func (t *Table) UpdateOne(ctx context.Context, f TableFilter, u TableUpdate, opts ...options.TableUpdateOneOption) error {
+	// Build the find options
+	updateOpts, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return fmt.Errorf("invalid options: %w", err)
+	}
+	cmd := t.newCmdWithMergedOptions("updateOne", tableUpdateOnePayload{
+		Filter: f,
+		Update: u,
+	}, updateOpts.APIOptions)
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	_, _, err = cmd.Execute(ctx)
+	return err
+}
+
+// tableDeleteOnePayload is the payload for the deleteOne command on tables.
+type tableDeleteOnePayload struct {
+	Filter TableFilter `json:"filter"`
+}
+
+// DeleteOne deletes a single row matching the filter.
+//
+// The filter must describe the complete primary key using equality on
+// primary-key columns. If no row matches, DeleteOne is a no-op and returns
+// nil.
+//
+// Options passed here override those set on the table.
+//
+// Example:
+//
+//	err := tbl.DeleteOne(ctx,
+//	    filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+//	)
+func (t *Table) DeleteOne(ctx context.Context, f TableFilter, opts ...options.TableDeleteOneOption) error {
+	deleteOpts, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return fmt.Errorf("invalid options: %w", err)
+	}
+	cmd := t.newCmdWithMergedOptions("deleteOne", tableDeleteOnePayload{
+		Filter: f,
+	}, deleteOpts.APIOptions)
+	// Note: Warnings are accessible via the WarningHandler option callback only.
+	_, _, err = cmd.Execute(ctx)
+	return err
+}
+
+// tableDeleteManyPayload is the payload for the deleteMany command on tables.
+type tableDeleteManyPayload struct {
+	Filter TableFilter `json:"filter,omitempty"`
+}
+
+// DeleteMany deletes all rows in the table matching the filter.
+//
+// The filter must reference only primary-key columns per the Data API rules
+// for table deleteMany. An empty filter (filter.F{}) deletes every row in the
+// table; a nil filter is rejected to avoid accidental total deletes.
+//
+// The Data API always returns deletedCount = -1 for this command, so no count
+// is surfaced to the caller; the method returns only an error.
+//
+// Options passed here override those set on the table.
+//
+// Example:
+//
+//	err := tbl.DeleteMany(ctx,
+//		filter.F{"title": "Hidden Shadows of the Past", "author": "John Anthony"},
+//	)
+func (t *Table) DeleteMany(ctx context.Context, f TableFilter, opts ...options.TableDeleteManyOption) error {
+	deleteOpts, err := options.MergeAndValidate(opts...)
+	if err != nil {
+		return fmt.Errorf("invalid options: %w", err)
+	}
+	if f == nil {
+		// Force the user to pass empty filter to avoid accidental delete all.
+		return ErrNilFilter
+	}
+	cmd := t.newCmdWithMergedOptions("deleteMany", tableDeleteManyPayload{
+		Filter: f,
+	}, deleteOpts.APIOptions)
+	_, _, err = cmd.Execute(ctx)
+	return err
 }
 
 // createIndexPayload is the payload for the createIndex command
@@ -607,7 +774,7 @@ func validateIndexColumn(column any) error {
 			return fmt.Errorf("index column map cannot be empty")
 		}
 	default:
-		return fmt.Errorf("invalid index column type: %T", column)
+		return fmt.Errorf("invalid index column type: %Raw", column)
 	}
 	// All good.
 	return nil

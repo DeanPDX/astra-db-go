@@ -197,26 +197,6 @@ func (c Column) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-// UnmarshalJSON accepts either an object (a full Column) or a bare string
-// (shorthand for a simple Column, used inside a parent's valueType).
-func (c *Column) UnmarshalJSON(data []byte) error {
-	if len(data) > 0 && data[0] == '"' {
-		var s string
-		if err := json.Unmarshal(data, &s); err != nil {
-			return err
-		}
-		*c = Column{Type: s}
-		return nil
-	}
-	type columnAlias Column
-	var ca columnAlias
-	if err := json.Unmarshal(data, &ca); err != nil {
-		return err
-	}
-	*c = Column(ca)
-	return nil
-}
-
 // VectorService defines the embedding provider configuration for vectorize
 type VectorService struct {
 	// Provider is the embedding provider name (e.g., "openai", "nvidia", "azureOpenAI")
@@ -362,6 +342,29 @@ func (p *PrimaryKey) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*p = PrimaryKey(pk)
+	return nil
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for Column.
+// It accepts either a JSON object (e.g. {"type":"text"}) or a plain
+// string (e.g. "text"). The string form appears in real-world API
+// responses for nested valueType fields on list/set/map columns.
+// For example, this shows the simple string form:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-methods/create-table.html#create-a-table-with-a-compound-primary-key
+// And this shows the nested JSON object form:
+// https://docs.datastax.com/en/astra-db-serverless/api-reference/table-methods/create-table.html#example-create-table-udt
+func (c *Column) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*c = Column{Type: s}
+		return nil
+	}
+	type colAlias Column
+	var col colAlias
+	if err := json.Unmarshal(data, &col); err != nil {
+		return err
+	}
+	*c = Column(col)
 	return nil
 }
 
@@ -545,4 +548,65 @@ func UDT(udtName string) Column {
 		Type:    TypeUDT,
 		UDTName: &udtName,
 	}
+}
+
+// AlterOperation represents the operation to perform on a table via alterTable.
+// Exactly one of the operation fields must be set per call — they are
+// mutually exclusive.
+//
+// Example — add columns:
+//
+//	op := table.AlterOperation{
+//		Add: &table.AddColumns{
+//			Columns: table.Columns{
+//				"is_summer_reading": table.Boolean(),
+//				"library_branch":    table.Text(),
+//			},
+//		},
+//	}
+//
+// Example — drop columns:
+//
+//	op := table.AlterOperation{
+//		Drop: &table.DropColumns{Columns: []string{"borrower"}},
+//	}
+type AlterOperation struct {
+	// Add adds new columns to the table.
+	Add *AddColumns `json:"add,omitempty"`
+
+	// Drop removes existing columns from the table.
+	Drop *DropColumns `json:"drop,omitempty"`
+
+	// AddVectorize attaches an embedding-generation integration to existing
+	// vector columns.
+	AddVectorize *AddVectorize `json:"addVectorize,omitempty"`
+
+	// DropVectorize removes the embedding-generation integration from existing
+	// vector columns. Stored embeddings are preserved.
+	DropVectorize *DropVectorize `json:"dropVectorize,omitempty"`
+}
+
+// AddColumns is the payload for the alterTable "add" operation.
+type AddColumns struct {
+	// Columns maps new column names to their type definitions.
+	Columns Columns `json:"columns"`
+}
+
+// DropColumns is the payload for the alterTable "drop" operation.
+type DropColumns struct {
+	// Columns is the list of column names to remove from the table.
+	Columns []string `json:"columns"`
+}
+
+// AddVectorize is the payload for the alterTable "addVectorize" operation.
+type AddVectorize struct {
+	// Columns maps existing vector column names to their vectorize service
+	// configuration.
+	Columns map[string]VectorService `json:"columns"`
+}
+
+// DropVectorize is the payload for the alterTable "dropVectorize" operation.
+type DropVectorize struct {
+	// Columns is the list of vector column names to disable vectorize on.
+	Columns []string `json:"columns"`
 }

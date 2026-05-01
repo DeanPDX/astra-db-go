@@ -37,7 +37,7 @@ type TableFindOptions struct {
 
 	// Projection controls which columns are included or excluded in the returned rows
 	// Use true to include a column, false to exclude it
-	Projection map[string]bool `json:"projection,omitempty"`
+	Projection map[string]any `json:"projection,omitempty"`
 
 	// Limit limits the total number of rows returned
 	Limit *int `json:"limit,omitempty"`
@@ -49,6 +49,10 @@ type TableFindOptions struct {
 	// IncludeSimilarity if true, includes a $similarity property in the response
 	// for vector searches. Only works with direct vector search, not vectorize.
 	IncludeSimilarity *bool `json:"includeSimilarity,omitempty"`
+
+	// IncludeSortVector if true, includes the sort vector in the response.
+	// Useful for vector searches using $vectorize.
+	IncludeSortVector *bool `json:"includeSortVector,omitempty"`
 
 	// InitialPageState is used for pagination to fetch the next page of results
 	InitialPageState *string `json:"pageState,omitempty"`
@@ -62,4 +66,53 @@ type TableFindOptions struct {
 func (b *tableFindOptionsBuilder) SetPageState(pageState string) *tableFindOptionsBuilder {
 	b.setters = append(b.setters, func(o *TableFindOptions) { o.InitialPageState = &pageState })
 	return b
+}
+
+// TableInsertOneOptions represents options for inserting a single row in a table.
+// Right now this is empty except for APIOptions, but leaving it here for future-proofing.
+type TableInsertOneOptions struct {
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Table→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
+
+// TableInsertManyOptions represents options for inserting multiple rows in a table.
+// Right now this is empty except for APIOptions, but leaving it here for future-proofing.
+type TableInsertManyOptions struct {
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Table→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
+
+// TableUpdateOneOptions represents options for updating a single row in a table.
+// Right now this is empty except for APIOptions, but leaving it here for future-proofing.
+type TableUpdateOneOptions struct {
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Table→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
+
+// TableDeleteOneOptions represents options for deleting a single row in a table.
+// Right now this is empty except for APIOptions, but leaving it here for future-proofing.
+type TableDeleteOneOptions struct {
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Table→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
+
+// TableDeleteManyOptions represents options for deleting multiple rows in a table.
+// Right now this is empty except for APIOptions; table deleteMany has no
+// pagination currently, etc.
+type TableDeleteManyOptions struct {
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Table→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
+}
+
+// AlterTableOptions represents options for altering a table.
+// Right now this is empty except for APIOptions, but leaving it here for future-proofing.
+type AlterTableOptions struct {
+	// APIOptions overrides API-level settings (token, timeout, headers, etc.)
+	// for this command. These are merged into the Client→DB→Table→Command hierarchy.
+	APIOptions *APIOptions `json:"-"`
 }

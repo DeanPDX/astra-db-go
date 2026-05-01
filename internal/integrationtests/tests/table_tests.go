@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/datastax/astra-db-go/cursors"
 	"github.com/datastax/astra-db-go/filter"
 	"github.com/datastax/astra-db-go/internal/integrationtests/harness"
 	"github.com/datastax/astra-db-go/options"
@@ -41,7 +42,9 @@ func init() {
 		{Name: "TableFindWithSort", Run: TableFindWithSort},
 		{Name: "TableFindWithProjection", Run: TableFindWithProjection},
 		{Name: "TableListIndexes", Run: TableListIndexes},
+		{Name: "TableListTables", Run: TableListTables},
 		{Name: "TableVectorIndex", Run: TableVectorIndex},
+		{Name: "TableAlter", Run: TableAlter},
 		{Name: "TableDrop", Run: TableDrop},
 	}
 	harness.Register(t...)
@@ -63,6 +66,9 @@ func TableCreate(e *harness.TestEnv) error {
 	ctx := context.Background()
 	db := e.DefaultDb()
 
+	// TODO: at some point we could switch this to using newer infer method.
+	// But it might be better to have a separate test so we exercise both infer
+	// and table.Definition.
 	definition := table.Definition{
 		Columns: table.Columns{
 			{Name: "title", Column: table.Text()},
@@ -217,24 +223,24 @@ func TableFind(e *harness.TestEnv) error {
 		warningHandlerRun = true
 	}))
 
-	// Find all books that are not checked out using cursor.All()
-	cursor := tbl.Find(ctx, filter.Eq("is_checked_out", false))
-	defer cursor.Close(ctx)
+	// Find all books that are not checked out using cursors.All()
+	cursor := tbl.Find(filter.Eq("is_checked_out", false))
+	defer cursor.Close()
 
 	var books []TestBook
-	if err := cursor.All(ctx, &books); err != nil {
-		return err
+
+	for book, err := range cursors.All[TestBook](ctx, cursor) {
+		if err != nil {
+			return fmt.Errorf("error iterating cursor: %w", err)
+		}
+		if book.IsCheckedOut {
+			return fmt.Errorf("expected is_checked_out to be false for book %q", book.Title)
+		}
+		books = append(books, *book)
 	}
 
 	if len(books) == 0 {
 		return errors.New("expected to find at least one book")
-	}
-
-	// Verify all returned books have is_checked_out = false
-	for _, book := range books {
-		if book.IsCheckedOut {
-			return fmt.Errorf("expected is_checked_out to be false for book %q", book.Title)
-		}
 	}
 
 	if !warningHandlerRun {
@@ -259,11 +265,11 @@ func TableFind(e *harness.TestEnv) error {
 	time.Sleep(2 * time.Second)
 
 	// Verify warnings go away after creating the index
-	// Find all books that are not checked out using cursor.All()
-	idxCursor := tbl.Find(ctx, filter.Eq("is_checked_out", false))
-	defer idxCursor.Close(ctx)
+	// Find all books that are not checked out using cursor.DecodeAll()
+	idxCursor := tbl.Find(filter.Eq("is_checked_out", false))
+	defer idxCursor.Close()
 
-	if err := idxCursor.All(ctx, &books); err != nil {
+	if err := idxCursor.DecodeAll(ctx, &books); err != nil {
 		return err
 	}
 
@@ -291,8 +297,8 @@ func TableFindWithCursor(e *harness.TestEnv) error {
 	tbl := db.Table(tableName)
 
 	// Find all books using cursor iteration
-	cursor := tbl.Find(ctx, filter.F{})
-	defer cursor.Close(ctx)
+	cursor := tbl.Find(filter.F{})
+	defer cursor.Close()
 
 	var books []TestBook
 	for cursor.Next(ctx) {
@@ -319,16 +325,16 @@ func TableFindWithSort(e *harness.TestEnv) error {
 	db := e.DefaultDb()
 	tbl := db.Table(tableName)
 
-	// Find books sorted by rating descending using cursor.All()
-	cursor := tbl.Find(ctx, filter.F{},
+	// Find books sorted by rating descending using cursors.DecodeAll()
+	cursor := tbl.Find(filter.F{},
 		options.TableFind().
 			SetSort(sort.Desc("rating")).
 			SetLimit(3),
 	)
-	defer cursor.Close(ctx)
+	defer cursor.Close()
 
-	var books []TestBook
-	if err := cursor.All(ctx, &books); err != nil {
+	books, err := cursors.DecodeAll[TestBook](ctx, cursor)
+	if err != nil {
 		return err
 	}
 
@@ -352,16 +358,16 @@ func TableFindWithProjection(e *harness.TestEnv) error {
 	db := e.DefaultDb()
 	tbl := db.Table(tableName)
 
-	// Find books with only title and author using cursor.All()
-	cursor := tbl.Find(ctx, filter.F{},
+	// Find books with only title and author using cursor.DecodeAll()
+	cursor := tbl.Find(filter.F{},
 		options.TableFind().
-			SetProjection(map[string]bool{"title": true, "author": true}).
+			SetProjection(map[string]any{"title": true, "author": true}).
 			SetLimit(1),
 	)
-	defer cursor.Close(ctx)
+	defer cursor.Close()
 
 	var books []map[string]any
-	if err := cursor.All(ctx, &books); err != nil {
+	if err := cursor.DecodeAll(ctx, &books); err != nil {
 		return err
 	}
 
@@ -456,6 +462,68 @@ func TableListIndexes(e *harness.TestEnv) error {
 	return nil
 }
 
+// TableListTables tests listing tables with both names-only and full metadata (explain=true).
+// This should be run after TableCreate and before TableDrop. One of the things I have
+// thought about is improving how `IntegrationTest` registers tests to allow running
+// single tests that have dependencies. Something like:
+//
+//	type IntegrationTest struct {
+//		Name string
+//		Run  func(e *TestEnv) error
+//		DependsOn []string // Ensure these have run before this test
+//		CleanUp   []string // Ensure these tests run after this test
+//	}
+//
+// That would allow us to set `TEST_PREFIX=TableListTables` and just run this test with
+// dependencies. Right now, to test ListTables you need to run all the table tests
+// (`TEST_PREFIX=Table`).
+func TableListTables(e *harness.TestEnv) error {
+	ctx := context.Background()
+	db := e.DefaultDb()
+
+	// Names-only listing
+	names, err := db.ListTableNames(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list table names: %w", err)
+	}
+	found := false
+	for _, n := range names {
+		if n == tableName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("expected to find table %q in ListTableNames result, got %v", tableName, names)
+	}
+
+	// Full descriptors with explain=true
+	tables, err := db.ListTables(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list tables: %w", err)
+	}
+	var desc *results.TableDescriptor
+	for i := range tables {
+		if tables[i].Name == tableName {
+			desc = &tables[i]
+			break
+		}
+	}
+	if desc == nil {
+		return fmt.Errorf("expected to find table %q in ListTables result", tableName)
+	}
+	if len(desc.Definition.Columns) == 0 {
+		return errors.New("expected non-empty Definition.Columns")
+	}
+	// TableCreate uses PartitionBy=["title"]. This also exercises PrimaryKey.UnmarshalJSON
+	// (the API returns the single-column form as a string).
+	if pk := desc.Definition.PrimaryKey.PartitionBy; len(pk) != 1 || pk[0] != "title" {
+		return fmt.Errorf("expected PartitionBy=[\"title\"], got %v", pk)
+	}
+
+	return nil
+}
+
 const vectorTableName = "go_test_vectors"
 
 // TestDocument represents a document with vector embeddings for vector index tests
@@ -515,16 +583,16 @@ func TableVectorIndex(e *harness.TestEnv) error {
 
 	// Test vector similarity search - find documents similar to [1.0, 0.0, 0.0]
 	queryVector := []float32{1.0, 0.0, 0.0}
-	cursor := tbl.Find(ctx, filter.F{},
+	cursor := tbl.Find(filter.F{},
 		options.TableFind().
 			SetSort(sort.S{"embedding": queryVector}).
 			SetIncludeSimilarity(true).
 			SetLimit(3),
 	)
-	defer cursor.Close(ctx)
+	defer cursor.Close()
 
 	var results []map[string]any
-	if err := cursor.All(ctx, &results); err != nil {
+	if err := cursor.DecodeAll(ctx, &results); err != nil {
 		return fmt.Errorf("failed to execute vector search: %w", err)
 	}
 
@@ -587,6 +655,108 @@ func TableVectorIndex(e *harness.TestEnv) error {
 		return fmt.Errorf("failed to drop vector table: %w", err)
 	}
 
+	return nil
+}
+
+// TableAlter exercises alterTable end-to-end against a freshly-created
+// throwaway table.
+func TableAlter(e *harness.TestEnv) error {
+	// TODO: add vectorize add/drop.
+	ctx := context.Background()
+	db := e.DefaultDb()
+
+	// Use a self-contained table so this test doesn't depend on or mess
+	// up other tests.
+	const alterTableName = "go_test_alter_books"
+
+	tbl, err := db.CreateTable(ctx, alterTableName, table.Definition{
+		Columns: table.Columns{
+			"title":  table.Text(),
+			"author": table.Text(),
+		},
+		PrimaryKey: table.PrimaryKey{
+			PartitionBy: []string{"title"},
+		},
+	}, options.CreateTable().SetIfNotExists(true))
+	if err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+	defer func() {
+		// Clean up after our test. If we don't already have an error, return any
+		// error from cleanup. Otherwise, let the test runner show the original error
+		// because it probably has more useful diagnostic info.
+		cleanupErr := db.DropTable(ctx, alterTableName)
+		if cleanupErr != nil && err == nil {
+			err = fmt.Errorf("failed to drop table: %w", cleanupErr)
+		}
+	}()
+
+	// Add some columns!
+	err = tbl.AlterTable(ctx, table.AlterOperation{
+		Add: &table.AddColumns{
+			Columns: table.Columns{
+				"is_summer_reading": table.Boolean(),
+				"library_branch":    table.Text(),
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("AlterTable Add failed: %w", err)
+	}
+
+	// AlteredBook sounds a tad sinister. But I swear it's just a book with some
+	// extra columns. Not a book altered to mislead anybody.
+	type AlteredBook struct {
+		Title           string `json:"title"`
+		Author          string `json:"author"`
+		IsSummerReading bool   `json:"is_summer_reading"`
+		LibraryBranch   string `json:"library_branch"`
+	}
+
+	// Insert a row populating the newly-added columns and read it back to
+	// prove they made it onto the schema.
+	row := AlteredBook{
+		Title:           "Summer Adventures",
+		Author:          "Jane Doe",
+		IsSummerReading: true,
+		LibraryBranch:   "Downtown",
+	}
+	if _, err := tbl.InsertOne(ctx, row); err != nil {
+		return fmt.Errorf("insert using added columns failed: %w", err)
+	}
+
+	var got AlteredBook
+	if err := tbl.FindOne(ctx, filter.Eq("title", "Summer Adventures")).Decode(&got); err != nil {
+		return fmt.Errorf("findOne after add failed: %w", err)
+	}
+	if !got.IsSummerReading {
+		return fmt.Errorf("expected is_summer_reading=true, got %v", got.IsSummerReading)
+	}
+	if got.LibraryBranch != "Downtown" {
+		return fmt.Errorf("expected library_branch=%q, got %v", "Downtown", got.LibraryBranch)
+	}
+
+	// Drop one of the new columns and verify the remaining row no longer
+	// exposes it (the other added column must survive untouched).
+	err = tbl.AlterTable(ctx, table.AlterOperation{
+		Drop: &table.DropColumns{Columns: []string{"library_branch"}},
+	})
+	if err != nil {
+		return fmt.Errorf("AlterTable Drop failed: %w", err)
+	}
+
+	// Using a map here because we want to just inspect the raw fields to verify
+	// dropped columns are not present.
+	var afterDrop map[string]any
+	if err := tbl.FindOne(ctx, filter.Eq("title", "Summer Adventures")).Decode(&afterDrop); err != nil {
+		return fmt.Errorf("findOne after drop failed: %w", err)
+	}
+	if _, present := afterDrop["library_branch"]; present {
+		return fmt.Errorf("expected library_branch to be missing after drop, but row was %v", afterDrop)
+	}
+	if v, ok := afterDrop["is_summer_reading"].(bool); !ok || !v {
+		return fmt.Errorf("expected is_summer_reading to survive the drop, got %v", afterDrop["is_summer_reading"])
+	}
 	return nil
 }
 
